@@ -42,9 +42,15 @@ import {
   Pencil,
 } from "lucide-react";
 import { workspace, type Entry } from "./workspace";
+import { loadDocument } from "./editor";
 import "./ocean.css";
 import "./atom-one.css";
 import "./style.css";
+
+type FileModal = {
+  kind: "new-file" | "new-folder" | "rename" | "copy";
+  entry?: Entry;
+};
 
 function FileActions({
   document: file,
@@ -257,10 +263,7 @@ function App() {
     [dark, setDark] = useState(
       () => localStorage.getItem("typclone.dark") === "true",
     ),
-    [modal, setModal] = useState<{
-      kind: "new-file" | "new-folder" | "rename" | "copy";
-      entry?: Entry;
-    } | null>(null),
+    [modal, setModal] = useState<FileModal | null>(null),
     [name, setName] = useState("");
   const [sidebarWidth, setSidebarWidth] = useState(() => {
     const saved = Number(localStorage.getItem("kronos.sidebarWidth"));
@@ -291,6 +294,34 @@ function App() {
     if (settingsOpen && !dialog?.open) dialog?.showModal();
     if (!settingsOpen && dialog?.open) dialog.close();
   }, [settingsOpen]);
+  const fileDialog = useRef<HTMLDialogElement>(null);
+  const fileDialogTrigger = useRef<HTMLElement | null>(null);
+  const recoveryButton = useRef<HTMLButtonElement>(null);
+  const openFileDialog = useCallback(
+    (
+      modal: FileModal,
+      name: string,
+      trigger = document.activeElement as HTMLElement | null,
+    ) => {
+      fileDialogTrigger.current = trigger;
+      setName(name);
+      setModal(modal);
+    },
+    [],
+  );
+  useEffect(() => {
+    const dialog = fileDialog.current;
+    if (modal && dialog && !dialog.open) {
+      dialog.showModal();
+      dialog.querySelector<HTMLInputElement>("input")?.focus();
+    }
+    if (!modal) {
+      if (dialog?.open) dialog.close();
+      if (fileDialogTrigger.current?.isConnected)
+        fileDialogTrigger.current.focus();
+      else recoveryButton.current?.focus();
+    }
+  }, [modal]);
   const [palette, setPalette] = useState(() =>
     localStorage.getItem("kronos.palette") === "atom-one"
       ? "atom-one"
@@ -340,10 +371,12 @@ function App() {
     settingsOpen,
     revealControls,
   ]);
-  const startRename = useCallback((entry: Entry) => {
-    setName(entry.name);
-    setModal({ kind: "rename", entry });
-  }, []);
+  const startRename = useCallback(
+    (entry: Entry) => {
+      openFileDialog({ kind: "rename", entry }, entry.name);
+    },
+    [openFileDialog],
+  );
   const scroll = useRef<HTMLElement>(null);
   const update = workspace.edit;
   useEffect(() => {
@@ -362,7 +395,7 @@ function App() {
       TaskItem.configure({ nested: true }),
       Placeholder.configure({ placeholder: "Begin anywhere…" }),
     ],
-    content: doc.markdown,
+    content: "",
     contentType: "markdown",
     editorProps: {
       attributes: { class: "writing", "aria-label": "Markdown editor" },
@@ -370,10 +403,7 @@ function App() {
     onUpdate: ({ editor }) => update(editor.getMarkdown()),
   });
   useEffect(() => {
-    editor?.commands.setContent(plainText ? "" : doc.markdown, {
-      contentType: "markdown",
-      emitUpdate: false,
-    });
+    if (editor) loadDocument(editor, plainText ? "" : doc.markdown);
     setSource(false);
     scroll.current?.scrollTo(0, 0);
   }, [doc.path, state.revision, editor]);
@@ -428,13 +458,12 @@ function App() {
       area.style.removeProperty("--focus-space");
     };
   }, [editor, focusMode, source, plainText, doc.path, settingsOpen]);
-  const create = () => {
+  const create = (trigger = document.activeElement as HTMLElement | null) => {
     if (!state.workspace) {
       void workspace.choose();
       return;
     }
-    setName("Untitled.md");
-    setModal({ kind: "new-file" });
+    openFileDialog({ kind: "new-file" }, "Untitled.md", trigger);
   };
   const toggleSource = () => {
     if (!state.doc || plainText) return;
@@ -447,7 +476,7 @@ function App() {
   };
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
-      if (settingsOpen) return;
+      if (settingsOpen || modal) return;
       if (!(e.metaKey || e.ctrlKey)) return;
       if (e.key === "s") {
         e.preventDefault();
@@ -473,6 +502,39 @@ function App() {
     window.addEventListener("keydown", key);
     return () => window.removeEventListener("keydown", key);
   });
+  const errorMessage = state.error && (
+    <div className="action-error" role="alert">
+      <span>{state.error}</span>
+      {state.conflict ? (
+        <>
+          <button type="button" onClick={() => void workspace.reload()}>
+            Reload from disk
+          </button>
+          <button
+            ref={recoveryButton}
+            type="button"
+            onClick={(event) =>
+              openFileDialog(
+                { kind: "copy" },
+                doc.name.replace(/(\.[^.]+)$/, " copy$1"),
+                event.currentTarget,
+              )
+            }
+          >
+            Save a copy
+          </button>
+        </>
+      ) : (
+        <button
+          type="button"
+          aria-label="Dismiss error"
+          onClick={workspace.dismissError}
+        >
+          <X size={16} />
+        </button>
+      )}
+    </div>
+  );
   return (
     <div
       style={
@@ -522,7 +584,7 @@ function App() {
               title={`New file in ${state.folder || state.workspace.name}`}
               aria-label="New document"
               disabled={state.busy}
-              onClick={create}
+              onClick={(event) => create(event.currentTarget)}
             >
               <FilePlus size={15} />
             </button>
@@ -530,10 +592,9 @@ function App() {
               title={`New folder in ${state.folder || state.workspace.name}`}
               aria-label="New folder"
               disabled={state.busy}
-              onClick={() => {
-                setName("");
-                setModal({ kind: "new-folder" });
-              }}
+              onClick={(event) =>
+                openFileDialog({ kind: "new-folder" }, "", event.currentTarget)
+              }
             >
               <FolderPlus size={15} />
             </button>
@@ -912,8 +973,10 @@ function App() {
               <button
                 className="primary"
                 disabled={state.busy || !state.ready}
-                onClick={() =>
-                  state.workspace ? create() : void workspace.choose()
+                onClick={(event) =>
+                  state.workspace
+                    ? create(event.currentTarget)
+                    : void workspace.choose()
                 }
               >
                 {state.workspace ? "New document" : "Choose folder"}
@@ -934,32 +997,16 @@ function App() {
           </div>
         </main>
       </section>
-      {state.error && (
-        <div className="action-error" role="alert">
-          <span>{state.error}</span>
-          {state.conflict ? (
-            <>
-              <button onClick={() => void workspace.reload()}>
-                Reload from disk
-              </button>
-              <button
-                onClick={() => {
-                  setName(doc.name.replace(/(\.[^.]+)$/, " copy$1"));
-                  setModal({ kind: "copy" });
-                }}
-              >
-                Save a copy
-              </button>
-            </>
-          ) : (
-            <button aria-label="Dismiss error" onClick={workspace.dismissError}>
-              <X size={16} />
-            </button>
-          )}
-        </div>
-      )}
-      {modal && (
-        <div className="modal-backdrop">
+      {!modal && errorMessage}
+      <dialog
+        ref={fileDialog}
+        className="file-dialog"
+        aria-labelledby="file-dialog-title"
+        onClose={(event) => {
+          if (!event.currentTarget.open) setModal(null);
+        }}
+      >
+        {modal && (
           <form
             className="modal"
             onSubmit={async (e) => {
@@ -981,7 +1028,7 @@ function App() {
             >
               <X size={18} />
             </button>
-            <h2>
+            <h2 id="file-dialog-title">
               {modal.kind === "rename"
                 ? "Rename document"
                 : modal.kind === "new-folder"
@@ -1011,8 +1058,9 @@ function App() {
               {modal.kind === "rename" ? "Save name" : "Create"}
             </button>
           </form>
-        </div>
-      )}
+        )}
+        {modal && errorMessage}
+      </dialog>
     </div>
   );
 }

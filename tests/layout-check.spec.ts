@@ -1,5 +1,86 @@
 import { test, expect, openWorkspace } from "./native-fixture";
 
+for (const kind of ["document", "folder"] as const) {
+  test(`new ${kind} dialog isolates keyboard input and restores focus`, async ({
+    page,
+  }) => {
+    await openWorkspace(page);
+    const trigger = page.getByRole("button", {
+      name: kind === "document" ? "New document" : "New folder",
+      exact: true,
+    });
+    await trigger.focus();
+    await trigger.click();
+    const dialog = page.getByRole("dialog", {
+      name: kind === "document" ? "New document" : "New folder",
+    });
+    const name = dialog.getByLabel(
+      kind === "document" ? "File name" : "Folder name",
+    );
+    await expect(name).toBeFocused();
+    await page
+      .getByLabel("Search files")
+      .evaluate((input: HTMLInputElement) => input.focus());
+    await expect(name).toBeFocused();
+    for (let i = 0; i < 6; i++) {
+      await page.keyboard.press("Tab");
+      expect(
+        await page.evaluate(() => {
+          const active = document.activeElement;
+          return active === document.body || !!active?.closest(".file-dialog");
+        }),
+      ).toBe(true);
+    }
+    await name.focus();
+    await page.keyboard.press("ControlOrMeta+o");
+    await page.keyboard.press("ControlOrMeta+n");
+    await expect(dialog).toBeVisible();
+    expect(
+      await page.evaluate(
+        () =>
+          (window as any).__nativeTest.calls.filter(
+            (c: string) => c === "choose_workspace",
+          ).length,
+      ),
+    ).toBe(1);
+    await page.keyboard.press("Escape");
+    await expect(dialog).not.toBeVisible();
+    await expect(trigger).toBeFocused();
+  });
+}
+
+test("rename and recovery dialogs dismiss with Escape and restore their triggers", async ({
+  page,
+}) => {
+  await openWorkspace(page);
+  const options = page.getByLabel("Options for Welcome.md");
+  await options.click();
+  await page.getByLabel("Rename Welcome.md").click();
+  const rename = page.getByRole("dialog", { name: "Rename document" });
+  await expect(rename.getByLabel("File name")).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(rename).not.toBeVisible();
+  await expect(options).toBeFocused();
+
+  await page.getByLabel("Markdown editor").fill("My draft");
+  await page.evaluate(() =>
+    (window as any).__nativeTest.change("Welcome.md", "External edit"),
+  );
+  const recovery = page.getByRole("button", {
+    name: "Save a copy",
+    exact: true,
+  });
+  await expect(recovery).toBeVisible();
+  await recovery.focus();
+  await recovery.click();
+  const copy = page.getByRole("dialog", { name: "Save a copy" });
+  await expect(copy.getByLabel("File name")).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(copy).not.toBeVisible();
+  await expect(recovery).toBeFocused();
+  await expect(page.getByLabel("Markdown editor")).toHaveText("My draft");
+});
+
 test("file menus dismiss and focus preserves window sizing", async ({
   page,
 }) => {

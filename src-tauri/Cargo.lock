@@ -47,6 +47,7 @@ version = "0.1.0"
 dependencies = [
  "blake3",
  "notify",
+ "rustix",
  "serde",
  "serde_json",
  "tauri",

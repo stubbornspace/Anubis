@@ -42,6 +42,63 @@ test("flushes pending edits before switching files and restores the workspace", 
   );
 });
 
+test("undo and redo stay within the active document", async ({ page }) => {
+  await openWorkspace(page);
+  const editor = page.getByLabel("Markdown editor");
+  await editor.click();
+  await page.keyboard.press("ControlOrMeta+z");
+  await expect(page.locator(".writing h1")).toHaveText("Welcome");
+  await editor.fill("First file draft");
+  await page.getByRole("button", { name: "Second.md", exact: true }).click();
+  const firstSaved = await page.evaluate(
+    () => (window as any).__nativeTest.read().files["Welcome.md"],
+  );
+  await editor.click();
+  await page.keyboard.press("ControlOrMeta+z");
+  await expect(page.locator(".writing h1")).toHaveText("Second");
+  await expect(page.getByRole("status")).toHaveText("Saved");
+
+  await page.locator(".writing h1").click();
+  await page.keyboard.press("End");
+  await page.keyboard.type(" edited");
+  await expect(page.locator(".writing h1")).toHaveText("Second edited");
+  await page.keyboard.press("ControlOrMeta+z");
+  await expect(page.locator(".writing h1")).toHaveText("Second");
+  await page.keyboard.press("ControlOrMeta+Shift+z");
+  await expect(page.locator(".writing h1")).toHaveText("Second edited");
+
+  await page.getByRole("button", { name: "Welcome.md", exact: true }).click();
+  await editor.click();
+  await page.keyboard.press("ControlOrMeta+z");
+  await expect(editor).toHaveText("First file draft");
+  const files = await page.evaluate(
+    () => (window as any).__nativeTest.read().files,
+  );
+  expect(files["Welcome.md"]).toBe(firstSaved);
+  expect(files["Second.md"].trim()).toBe("# Second edited");
+});
+
+test("external document refresh starts a fresh undo history", async ({
+  page,
+}) => {
+  await openWorkspace(page);
+  await page.getByLabel("Markdown editor").fill("Saved local edit");
+  await expect(page.getByRole("status")).toHaveText("Saved");
+  await page.evaluate(() =>
+    (window as any).__nativeTest.change("Welcome.md", "# External version"),
+  );
+  await expect(page.locator(".writing h1")).toHaveText("External version");
+  await page.getByLabel("Markdown editor").click();
+  await page.keyboard.press("ControlOrMeta+z");
+  await expect(page.locator(".writing h1")).toHaveText("External version");
+  await expect(page.getByRole("status")).toHaveText("Saved");
+  expect(
+    await page.evaluate(
+      () => (window as any).__nativeTest.read().files["Welcome.md"],
+    ),
+  ).toBe("# External version");
+});
+
 test("creates folders and documents in the selected subfolder, renames, and trashes the targeted file", async ({
   page,
 }) => {

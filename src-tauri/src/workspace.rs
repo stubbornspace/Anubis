@@ -218,6 +218,7 @@ pub fn save(root: &Path, path: &str, markdown: &str, version: &str) -> Result<Sn
     if text.len() as u64 > MAX_BYTES {
         return Err("Document exceeds the 10 MB editing limit.".into());
     }
+    let saved = snapshot(root, &path, text.as_bytes())?;
     // A same-directory temporary file keeps a failed write from truncating the original.
     let mut temp = tempfile::NamedTempFile::new_in(path.parent().unwrap()).map_err(error)?;
     temp.as_file()
@@ -227,7 +228,7 @@ pub fn save(root: &Path, path: &str, markdown: &str, version: &str) -> Result<Sn
     temp.as_file().sync_all().map_err(error)?;
     verify(&bytes(&path)?, version)?;
     temp.persist(&path).map_err(error)?;
-    snapshot(root, &path, text.as_bytes())
+    Ok(saved)
 }
 fn validate_name(name: &str, file: bool) -> Result<(), String> {
     if name.trim() != name
@@ -256,16 +257,33 @@ pub fn create(root: &Path, parent: &str, name: &str, markdown: &str) -> Result<S
         return Err("Select a folder.".into());
     }
     let target = parent.join(name);
+    let created = snapshot(root, &target, markdown.as_bytes())?;
     let mut temp = tempfile::NamedTempFile::new_in(parent).map_err(error)?;
     temp.write_all(markdown.as_bytes()).map_err(error)?;
     temp.as_file().sync_all().map_err(error)?;
     temp.persist_noclobber(&target)
         .map_err(|e| format!("Could not create {name}: {}", e.error))?;
-    snapshot(root, &target, markdown.as_bytes())
+    Ok(created)
 }
 pub fn create_folder(root: &Path, parent: &str, name: &str) -> Result<(), String> {
     validate_name(name, false)?;
     fs::create_dir(resolve(root, parent)?.join(name)).map_err(error)
+}
+#[cfg(target_os = "macos")]
+fn rename_noclobber(source: &Path, dest: &Path) -> Result<(), String> {
+    use rustix::fs::{CWD, RenameFlags, renameat_with};
+    // RENAME_EXCL also permits case-only renames on case-insensitive APFS.
+    renameat_with(CWD, source, CWD, dest, RenameFlags::NOREPLACE).map_err(error)
+}
+#[cfg(not(target_os = "macos"))]
+fn rename_noclobber(source: &Path, dest: &Path) -> Result<(), String> {
+    // hard_link creates a new directory entry without ever replacing an existing file.
+    fs::hard_link(source, dest).map_err(error)?;
+    if let Err(e) = fs::remove_file(source) {
+        let _ = fs::remove_file(dest);
+        return Err(error(e));
+    }
+    Ok(())
 }
 pub fn rename(root: &Path, path: &str, name: &str, version: &str) -> Result<Snapshot, String> {
     validate_name(name, true)?;
@@ -276,13 +294,9 @@ pub fn rename(root: &Path, path: &str, name: &str, version: &str) -> Result<Snap
     if source == dest {
         return snapshot(root, &source, &data);
     }
-    // hard_link creates a new directory entry without ever replacing an existing file.
-    fs::hard_link(&source, &dest).map_err(|e| format!("Could not rename to {name}: {e}"))?;
-    if let Err(e) = fs::remove_file(&source) {
-        let _ = fs::remove_file(&dest);
-        return Err(error(e));
-    }
-    snapshot(root, &dest, &data)
+    let renamed = snapshot(root, &dest, &data)?;
+    rename_noclobber(&source, &dest).map_err(|e| format!("Could not rename to {name}: {e}"))?;
+    Ok(renamed)
 }
 pub fn delete(root: &Path, path: &str, version: &str) -> Result<(), String> {
     let path = resolve(root, path)?;
@@ -338,6 +352,41 @@ mod tests {
         let renamed = rename(r, "nested/a.md", "new.markdown", &a.version).unwrap();
         assert_eq!(renamed.path, "nested/new.markdown");
         assert!(!r.join("nested/a.md").exists());
+    }
+    #[test]
+    fn rejected_contents_leave_existing_files_and_creation_targets_untouched() {
+        let d = root();
+        let r = d.path();
+        let original = "\u{feff}Original\r\n";
+        fs::write(r.join("note.txt"), original).unwrap();
+        let doc = read(r, "note.txt").unwrap();
+        let oversized = "x".repeat(MAX_BYTES as usize + 1);
+        for invalid in ["New\0text", oversized.as_str()] {
+            assert!(save(r, "note.txt", invalid, &doc.version).is_err());
+            assert_eq!(fs::read_to_string(r.join("note.txt")).unwrap(), original);
+            assert_eq!(read(r, "note.txt").unwrap().version, doc.version);
+            assert!(create(r, "", "copy.txt", invalid).is_err());
+            assert!(!r.join("copy.txt").exists());
+        }
+        assert_eq!(fs::read_dir(r).unwrap().count(), 1);
+    }
+    #[test]
+    fn case_only_renames_preserve_contents_and_update_the_directory_entry() {
+        let d = root();
+        let r = d.path();
+        let original = "\u{feff}Keep this\r\n";
+        fs::write(r.join("note.md"), original).unwrap();
+        let doc = read(r, "note.md").unwrap();
+        let renamed = rename(r, "note.md", "Note.MD", &doc.version).unwrap();
+        assert_eq!(renamed.path, "Note.MD");
+        assert_eq!(renamed.version, doc.version);
+        assert_eq!(fs::read_to_string(r.join("Note.MD")).unwrap(), original);
+        let entries = listing(r).unwrap().entries;
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].name, "Note.MD");
+        let restored = rename(r, "Note.MD", "note.md", &renamed.version).unwrap();
+        assert_eq!(restored.version, doc.version);
+        assert_eq!(listing(r).unwrap().entries[0].name, "note.md");
     }
     #[test]
     fn invalid_and_outside_paths_are_rejected() {

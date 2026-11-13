@@ -360,13 +360,16 @@ header {
 .danger {
   color: var(--error);
 }
-.modal-backdrop {
-  position: fixed;
-  inset: 0;
+.file-dialog::backdrop {
   background: #0004;
-  display: grid;
-  place-items: center;
-  z-index: 20;
+}
+.file-dialog {
+  padding: 0;
+  border: 0;
+  overflow: visible;
+  background: transparent;
+  color: var(--text);
+  max-width: calc(100vw - 32px);
 }
 .modal {
   position: relative;

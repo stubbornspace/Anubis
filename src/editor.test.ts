@@ -6,6 +6,7 @@ import { Markdown } from "@tiptap/markdown";
 import { TableKit } from "@tiptap/extension-table";
 import TaskList from "@tiptap/extension-task-list";
 import TaskItem from "@tiptap/extension-task-item";
+import { loadDocument } from "./editor";
 const extensions = [
   StarterKit,
   Markdown,
@@ -14,6 +15,31 @@ const extensions = [
   TaskItem.configure({ nested: true }),
 ];
 describe("Markdown document integrity", () => {
+  it("clears undo and redo across document loads without emitting edits", () => {
+    const updates: string[] = [];
+    const editor = new Editor({
+      extensions,
+      content: "",
+      onUpdate: ({ editor }) => updates.push(editor.getMarkdown()),
+    });
+    loadDocument(editor, "# First");
+    editor.commands.insertContent(" edited");
+    editor.commands.undo();
+    expect(editor.can().redo()).toBe(true);
+    updates.length = 0;
+    loadDocument(editor, "# Second");
+    expect(editor.can().undo()).toBe(false);
+    expect(editor.can().redo()).toBe(false);
+    editor.commands.undo();
+    editor.commands.redo();
+    expect(editor.getText().trim()).toBe("Second");
+    expect(updates).toEqual([]);
+    editor.commands.insertContent("New edit ");
+    expect(editor.can().undo()).toBe(true);
+    editor.commands.undo();
+    expect(editor.getText().trim()).toBe("Second");
+    editor.destroy();
+  });
   it("preserves headings, marks, task state, code and tables through a source round trip", () => {
     const md =
       "# Title\n\nA **bold** and *italic* thought.\n\n- [x] Finished\n- [ ] Pending\n\n```js\nconst n = 3;\n```\n\n| Key | Value |\n| --- | --- |\n| a | b |";

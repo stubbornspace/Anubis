@@ -1,0 +1,45 @@
+/* Adapted from Atom's One Light / One Dark palettes:
+   https://github.com/atom/one-light-syntax/blob/master/styles/colors.less
+   https://github.com/atom/one-dark-syntax/blob/master/styles/colors.less */
+[data-palette="atom-one"] {
+  --paper: #fafafa;
+  --sidebar: #f0f0f0;
+  --text: #383a42;
+  --muted: #696c77;
+  --line: #d5d6da;
+  --hover: #e5e5e6;
+  --accent: #4078f2;
+  --accent-foreground: #ffffff;
+  --active: #dce5f8;
+  --code: #f0f0f0;
+  --overlay: #ffffff;
+  --sidebar-muted: #696c77;
+  --sidebar-line: #d5d6da;
+  --sidebar-hover: #e5e5e6;
+  --sidebar-control: #e5e5e6;
+  --input-border: #b5b7bf;
+  --placeholder: #696c77;
+  --error: #c52635;
+  --selection: #d4e1fc;
+}
+[data-palette="atom-one"][data-theme="dark"] {
+  --paper: #282c34;
+  --sidebar: #21252b;
+  --text: #abb2bf;
+  --muted: #9da5b4;
+  --line: #434956;
+  --hover: #353b45;
+  --accent: #61afef;
+  --accent-foreground: #21252b;
+  --active: #3e4451;
+  --code: #21252b;
+  --overlay: #2c313a;
+  --sidebar-muted: #9da5b4;
+  --sidebar-line: #434956;
+  --sidebar-hover: #2c313a;
+  --sidebar-control: #353b45;
+  --input-border: #5c6370;
+  --placeholder: #9da5b4;
+  --error: #e06c75;
+  --selection: #3e4451;
+}

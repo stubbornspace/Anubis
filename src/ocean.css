@@ -1,0 +1,46 @@
+/* Ocean color tokens from the installed T3 Code palette.
+   Source: themePalette-B3gKK5JE.js, Ocean light / dark variants. */
+:root {
+  color-scheme: light;
+  --paper: oklch(0.974199 0.002856 241.597);
+  --sidebar: oklch(0.939254 0.01193 241.729);
+  --text: oklch(0.222003 0.03479 328.979);
+  --muted: oklch(0.541555 0.017468 323.531);
+  --line: oklch(0.867646 0.013482 252.362);
+  --hover: oklch(0.91295 0.018827 241.836);
+  --accent: oklch(0.536684 0.120219 247.01);
+  --accent-foreground: oklch(0.990339 0.008411 325.64);
+  --active: oklch(0.842113 0.037689 242.174);
+  --code: oklch(0.957684 0.002906 253.68);
+  --overlay: oklch(0.951058 0.002962 258.339);
+  --sidebar-muted: oklch(0.517366 0.018944 311.433);
+  --sidebar-line: oklch(0.862823 0.011384 256.926);
+  --sidebar-hover: oklch(0.890798 0.024681 241.933);
+  --sidebar-control: oklch(0.888479 0.011475 251.638);
+  --input-border: oklch(0.832939 0.017389 252.598);
+  --placeholder: oklch(0.530733 0.01795 323.79);
+  --error: oklch(0.509494 0.208583 28.513);
+  --selection: oklch(0.895373 0.023469 241.913);
+}
+[data-theme="dark"] {
+  color-scheme: dark;
+  --paper: oklch(0.242641 0.024125 250.573);
+  --sidebar: oklch(0.290387 0.032043 247.274);
+  --text: #abb2bf;
+  --muted: oklch(0.652227 0.01149 273.31);
+  --line: oklch(0.438653 0.039496 245.44);
+  --hover: oklch(0.413315 0.051874 243.855);
+  --accent: oklch(0.758933 0.105833 241.548);
+  --accent-foreground: oklch(0.222003 0.03479 328.979);
+  --active: oklch(0.413744 0.051943 243.848);
+  --code: oklch(0.29661 0.021883 251.968);
+  --overlay: oklch(0.348439 0.019942 253.696);
+  --sidebar-muted: oklch(0.69099 0.01395 266.424);
+  --sidebar-line: oklch(0.55859 0.019001 256.223);
+  --sidebar-hover: oklch(0.353381 0.042285 245.043);
+  --sidebar-control: oklch(0.417822 0.02535 250.162);
+  --input-border: oklch(0.500905 0.043574 244.781);
+  --placeholder: oklch(0.721641 0.010192 281.271);
+  --error: oklch(0.702184 0.189226 22.228);
+  --selection: oklch(0.445224 0.056936 243.413);
+}

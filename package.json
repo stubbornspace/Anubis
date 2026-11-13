@@ -1,0 +1,47 @@
+{
+  "name": "anubis",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tauri dev",
+    "build": "tauri build",
+    "test": "vitest run src",
+    "test:e2e": "playwright test",
+    "format": "prettier --write src tests *.ts *.json index.html README.md",
+    "tauri": "tauri",
+    "desktop:dev": "tauri dev",
+    "desktop:build": "tauri build",
+    "desktop:check": "cargo check --manifest-path src-tauri/Cargo.toml",
+    "test:webkit": "playwright test --project=webkit",
+    "frontend:dev": "vite --host 127.0.0.1",
+    "frontend:build": "tsc -b && vite build",
+    "test:native": "cargo test --manifest-path src-tauri/Cargo.toml --lib"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2.12.4",
+    "@tauri-apps/plugin-dialog": "^2.8.4",
+    "@tiptap/extension-placeholder": "^3.0.0",
+    "@tiptap/extension-table": "^3.0.0",
+    "@tiptap/extension-task-item": "^3.0.0",
+    "@tiptap/extension-task-list": "^3.0.0",
+    "@tiptap/markdown": "^3.0.0",
+    "@tiptap/react": "^3.0.0",
+    "@tiptap/starter-kit": "^3.0.0",
+    "lucide-react": "^0.468.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.64.1",
+    "@tauri-apps/cli": "^2.12.4",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^6.1.2",
+    "jsdom": "^30.1.3",
+    "prettier": "^3.9.10",
+    "typescript": "~5.7.2",
+    "vite": "^8.3.5",
+    "vitest": "^5.0.5"
+  }
+}

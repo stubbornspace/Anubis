@@ -1,0 +1,5 @@
+Mode: built-in image_gen edit
+Source: public/icons/anubis-light.png
+Output: public/icons/anubis-dark.png
+
+Use case: precise-object-edit. Create the dark-theme variant of this exact Anubis sidebar logo. Copy the composition, silhouette, proportions, all edges, blue glowing circular ring, cyan eye, and silver/white trim unchanged. Change ONLY the very dark navy blue interior fill of the jackal head/ears/neck to a lighter muted slate blue (#7294B5 with the original subtle shading) so the head is visible against a dark application background. No redesign, no added details, no text, no cropping. Preserve transparency; background must remain transparent. Output square 1024x1024 PNG.

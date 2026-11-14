@@ -1,6 +1,6 @@
 # Anubis
 
-Anubis is a desktop-only Markdown and text editor built with React, Tiptap, and Tauri 2. Documents are real files in a local folder you choose. There is no standalone web app or browser document store.
+Anubis is a Markdown and text editor for desktop and iOS, built with React, Tiptap, and Tauri 2. Documents are real files in a folder you choose. There is no standalone web app or browser document store.
 
 ## Run and build
 
@@ -25,7 +25,38 @@ Outputs are in `src-tauri/target/release/bundle/`. On macOS:
 open src-tauri/target/release/bundle/macos/Anubis.app
 ```
 
-The local build is not Developer ID signed or notarized. Windows and Linux use Tauri's platform builds but have not been tested on this Mac. No iOS project is configured.
+The local desktop build is not Developer ID signed or notarized. Windows and Linux use Tauri's platform builds but have not been tested on this Mac.
+
+## iPhone and iPad
+
+The iOS target supports iOS/iPadOS 17 and later. It shares the editor, themes, file tree, source mode, autosave, and conflict recovery with desktop. The compact layout uses a Files drawer, touch controls, safe-area insets, and an editor viewport that responds to the software keyboard.
+
+Install full Xcode, an iOS Simulator runtime, CocoaPods, and XcodeGen, plus the Rust targets:
+
+```sh
+rustup target add aarch64-apple-ios aarch64-apple-ios-sim
+npm ci
+npm run ios:dev -- --open
+```
+
+This starts Vite and opens `src-tauri/gen/apple/anubis.xcodeproj`. Select the `anubis_iOS` scheme and an iPhone or iPad simulator, then Run in Xcode. `npm run ios:dev -- "SIMULATOR NAME"` can build and launch a named simulator directly when the installed runtime matches the Xcode SDK. If the CLI reports a missing Simulator SDK despite an older runtime being installed, use `--open` and select that installed simulator in Xcode.
+
+```sh
+# Standalone unsigned simulator build (matching Xcode/runtime versions):
+npm run ios:simulator
+# Device archive / distribution build:
+npm run ios:build
+```
+
+For a standalone simulator app when SDK/runtime versions differ, run `npm run ios:build -- --debug --open`, then build and run the simulator target in Xcode. This embeds the built frontend instead of connecting to Vite.
+
+Physical-device installation and distribution require an Apple development team and provisioning. Set `APPLE_DEVELOPMENT_TEAM` locally, or select your team in Xcode. Do not commit signing identities or provisioning profiles. The existing bundle identifier `com.stubbornspace.kronos` is retained. The generated Xcode project is included; `npm run ios:init` can regenerate it, and `xcodegen generate --spec src-tauri/gen/apple/project.yml` updates it after changing the project definition.
+
+Choose a folder through the native Files picker. A local `Notes` folder is available inside Anubis's Documents directory, visible in Files under **On My iPhone/iPad → Anubis**. The native bridge retains security-scoped access and saves a bookmark to reopen the chosen folder after relaunch. Canceling or failing to open a new folder retains the previous workspace. Use locally available UTF-8 files; this is not a cloud synchronization client.
+
+On iOS, deletion uses the system Trash API; recover supported files in Files → Recently Deleted. If the folder provider cannot trash a file, Anubis reports the error and keeps the file. Switching away from the app requests an immediate save and a short native background task to let it finish.
+
+Before each iOS save, Anubis writes a private recovery draft in native app storage. Successful saves clear it. If a save fails and iOS terminates the app, opening a workspace on the next launch restores that draft and offers **Save a copy** or a confirmed discard/reload. Recovered copies are created at the root of the chosen workspace, including when the original folder is unavailable. Recovery is not a backup.
 
 ## Folder workspaces
 
@@ -42,7 +73,7 @@ Edits autosave after a short pause. Navigation, rename, deletion, folder switchi
 
 Native saves use a same-directory temporary file and atomic replacement. Existing UTF-8 BOM and CRLF line endings are retained. Content versions are checked before replacement to detect external edits. Save failures or conflicts keep your edits in the editor and block navigation/quit until resolved. Use **Reload from disk** to discard unsaved changes after confirmation, or **Save a copy** to create a new file without overwriting the disk version.
 
-Hidden files/directories and symbolic links are excluded from discovery. File operations are confined to the selected folder. Files must be UTF-8 text, at most 10 MB; the tree scan is limited to 20,000 entries and 64 levels. Unreadable folders are reported. Renames never replace existing files. macOS uses an exclusive native rename, including for case-only changes; other platforms use a hard-link operation and may fail on filesystems without hard-link support. A file changed at precisely the same moment by another program is not covered by an inter-process lock; avoid editing the same file simultaneously in multiple apps.
+Hidden files/directories and symbolic links are excluded from discovery. File operations are confined to the selected folder. Files must be UTF-8 text, at most 10 MB; the tree scan is limited to 20,000 entries and 64 levels. Unreadable folders are reported. Renames never replace existing files. macOS and iOS use an exclusive native rename, including for case-only changes; other platforms use a hard-link operation and may fail on filesystems without hard-link support. A file changed at precisely the same moment by another program is not covered by an inter-process lock; avoid editing the same file simultaneously in multiple apps.
 
 The previous version's webview-stored notes are left untouched, but are no longer loaded as the workspace or migrated automatically. Only UI preferences and the last active relative path remain in webview storage. Local files and autosave are not a backup.
 
@@ -65,8 +96,8 @@ cargo fmt --manifest-path src-tauri/Cargo.toml --check
 npm run build
 ```
 
-Rust tests perform real filesystem operations in temporary folders, including recursive discovery, symlink/traversal rejection, conflict detection, and collision-safe writes/renames. UI tests use Chromium and WebKit with a mocked Tauri IPC boundary to exercise navigation, autosave, folder trees, native-close coordination, recovery, and layout. These engine tests are a desktop test harness, not a supported browser application.
+Rust tests perform real filesystem operations in temporary folders, including recursive discovery, symlink/traversal rejection, conflict detection, and collision-safe writes/renames. UI tests use Chromium and WebKit with a mocked Tauri IPC boundary to exercise navigation, autosave, folder trees, native-close coordination, recovery, and layout. The iPhone and iPad WebKit projects also exercise touch navigation, software-keyboard viewport changes, and background save/recovery through the mock boundary. These engine tests are a native-app test harness, not a supported browser application. The Xcode Test action provides a separate real iOS workspace smoke test.
 
 ## Scope and background
 
-See [analysis/REPORT.md](analysis/REPORT.md) for the initial Typora feature research. The interface, editor integration, and filesystem implementation are original code. Advanced Markdown features, drag-and-drop moves, multiple workspaces, folder rename/delete, cloud synchronization, signed distribution, and mobile support are not implemented.
+See [analysis/REPORT.md](analysis/REPORT.md) for the initial Typora feature research. The interface, editor integration, and filesystem implementation are original code. Advanced Markdown features, drag-and-drop moves, multiple workspaces, folder rename/delete, cloud synchronization, signed distribution, and Android support are not implemented.

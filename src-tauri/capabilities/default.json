@@ -1,6 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
+  "platforms": ["macOS", "windows", "linux"],
   "description": "Main desktop window: core window operations and delete confirmation dialogs.",
   "windows": ["main"],
   "permissions": [

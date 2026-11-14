@@ -2,6 +2,7 @@ import { invoke, isTauri } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { confirm } from "@tauri-apps/plugin-dialog";
+import { isIOS } from "./platform";
 
 export type Entry = {
   path: string;
@@ -32,6 +33,7 @@ export type State = {
   conflict: boolean;
   revision: number;
   ready: boolean;
+  recoveredFrom: string | null;
 };
 export const parentOf = (path: string) =>
   path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "";
@@ -55,6 +57,7 @@ export class WorkspaceController {
     conflict: false,
     revision: 0,
     ready: false,
+    recoveredFrom: null,
   };
   private subscribers = new Set<() => void>();
   private queue: Promise<unknown> = Promise.resolve();
@@ -102,12 +105,29 @@ export class WorkspaceController {
       error: "",
       revision: this.state.revision + 1,
       folder: doc ? parentOf(doc.path) : "",
+      recoveredFrom: null,
     });
     if (doc) localStorage.setItem(`kronos.active:${this.root()}`, doc.path);
   }
   private async accept(workspace: Workspace) {
     this.set({ workspace, folder: "" });
     this.activate(null);
+    if (isIOS) {
+      const recovery = await invoke<{
+        root: string;
+        document: Document;
+      } | null>("load_recovery_draft");
+      if (recovery) {
+        this.activate(recovery.document);
+        this.set({
+          dirty: true,
+          conflict: true,
+          recoveredFrom: recovery.root,
+          error: `Recovered unsaved edits for ${recovery.document.name} from your last session. Save a copy to keep them, or reload from disk to discard them.`,
+        });
+        return;
+      }
+    }
     const remembered = localStorage.getItem(`kronos.active:${workspace.root}`);
     const files = flatten(workspace.entries);
     const first = files.find((e) => e.path === remembered) || files[0];
@@ -125,7 +145,7 @@ export class WorkspaceController {
       if (!isTauri()) {
         this.set({
           ready: true,
-          error: "Open Anubis as a desktop app to choose a local folder.",
+          error: "Open Anubis as an app to choose a local folder.",
         });
         return;
       }
@@ -147,18 +167,24 @@ export class WorkspaceController {
   };
   private async flush() {
     clearTimeout(this.timer);
+    let savedAny = false;
     while (this.state.dirty && this.state.doc) {
-      if (this.state.conflict)
-        throw new Error(
-          "Resolve the file conflict before leaving this document.",
-        );
       const doc = this.state.doc;
       this.set({ saving: true });
       try {
+        // iOS may terminate a suspended app even when a save fails. Keep a durable
+        // draft before attempting the write, including edits to a recovered draft.
+        if (isIOS)
+          await invoke("store_recovery_draft", { root: this.root(), ...doc });
+        if (this.state.conflict)
+          throw new Error(
+            "Resolve the file conflict before leaving this document.",
+          );
         const saved = await invoke<Document>("save_document", {
           root: this.root(),
           ...doc,
         });
+        savedAny = true;
         const current = this.state.doc!;
         this.set({
           doc: { ...current, version: saved.version },
@@ -173,6 +199,7 @@ export class WorkspaceController {
         this.set({ saving: false });
       }
     }
+    if (isIOS && savedAny) await invoke("clear_recovery_draft");
   }
   save = () => this.serial(() => this.flush(), false);
   choose = () =>
@@ -232,17 +259,18 @@ export class WorkspaceController {
       const root = this.root();
       const workspace = await invoke<Workspace>("list_workspace", { root });
       this.set({ workspace });
-      if (
-        !flatten(workspace.entries).some((e) => e.path === this.state.doc!.path)
-      )
-        this.activate(null);
-      else
-        this.activate(
-          await invoke<Document>("read_document", {
-            root,
-            path: this.state.doc.path,
-          }),
-        );
+      const differentFolder =
+        this.state.recoveredFrom !== null && this.state.recoveredFrom !== root;
+      const disk =
+        !differentFolder &&
+        flatten(workspace.entries).some((e) => e.path === this.state.doc!.path)
+          ? await invoke<Document>("read_document", {
+              root,
+              path: this.state.doc.path,
+            })
+          : null;
+      if (isIOS) await invoke("clear_recovery_draft");
+      this.activate(disk);
     });
   create = (name: string, directory = false) =>
     this.serial(async () => {
@@ -271,10 +299,11 @@ export class WorkspaceController {
       const root = this.root();
       const copy = await invoke<Document>("create_document", {
         root,
-        parent: parentOf(this.state.doc.path),
+        parent: this.state.recoveredFrom ? "" : parentOf(this.state.doc.path),
         name: supportedName(name),
         markdown: this.state.doc.markdown,
       });
+      if (isIOS) await invoke("clear_recovery_draft");
       this.activate(copy);
       this.set({
         workspace: await invoke<Workspace>("list_workspace", { root }),
@@ -341,13 +370,24 @@ export class WorkspaceController {
         error: `Folder updates stopped: ${e.payload}. Use Refresh folder.`,
       }),
     );
-    const window = getCurrentWindow();
-    const unfocus = await window.onFocusChanged(({ payload }) => {
+    const appWindow = getCurrentWindow();
+    const unfocus = await appWindow.onFocusChanged(({ payload }) => {
       if (payload) void this.refresh();
     });
     const unclose = await listen("workspace-before-exit", async () => {
       if (await this.save()) await invoke("finish_exit");
     });
+    const visibility = () => {
+      if (document.visibilityState === "hidden") void this.save();
+      else void this.refresh();
+    };
+    const background = () => {
+      void this.save().finally(() => {
+        if (isIOS) void invoke("finish_background_save");
+      });
+    };
+    document.addEventListener("visibilitychange", visibility);
+    window.addEventListener("anubis-background", background);
     await invoke("frontend_ready");
     return () => {
       clearTimeout(timer);
@@ -355,6 +395,8 @@ export class WorkspaceController {
       watchError();
       unfocus();
       unclose();
+      document.removeEventListener("visibilitychange", visibility);
+      window.removeEventListener("anubis-background", background);
     };
   }
 }

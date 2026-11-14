@@ -7,7 +7,7 @@ import React, {
   useCallback,
 } from "react";
 import { createRoot } from "react-dom/client";
-import { isTauri } from "@tauri-apps/api/core";
+import { invoke, isTauri } from "@tauri-apps/api/core";
 import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { Markdown } from "@tiptap/markdown";
@@ -43,6 +43,7 @@ import {
 } from "lucide-react";
 import { workspace, type Entry } from "./workspace";
 import { loadDocument } from "./editor";
+import { isIOS, compactNavigation } from "./platform";
 import "./ocean.css";
 import "./atom-one.css";
 import "./style.css";
@@ -140,12 +141,14 @@ function FileTree({
   active,
   selectedFolder,
   onRename,
+  onOpen,
   search,
 }: {
   entries: Entry[];
   active: string;
   selectedFolder: string;
   onRename: (entry: Entry) => void;
+  onOpen: (path: string) => void;
   search: string;
 }) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -227,7 +230,7 @@ function FileTree({
             className="file-open"
             aria-current={active === entry.path ? "page" : undefined}
             title={entry.path}
-            onClick={() => void workspace.select(entry.path)}
+            onClick={() => onOpen(entry.path)}
           >
             <FileText size={16} />
             <span>{entry.name}</span>
@@ -256,7 +259,7 @@ function App() {
   const state = useSyncExternalStore(workspace.subscribe, workspace.snapshot);
   const doc = state.doc || { path: "", name: "", markdown: "", version: "" };
   const plainText = /\.txt$/i.test(doc.name);
-  const [sidebar, setSidebar] = useState(true),
+  const [sidebar, setSidebar] = useState(() => !compactNavigation()),
     [search, setSearch] = useState(""),
     [source, setSource] = useState(false),
     [focusMode, setFocusMode] = useState(false),
@@ -333,7 +336,11 @@ function App() {
   }, [palette]);
   const [fontSize, setFontSize] = useState(() => {
     const saved = Number(localStorage.getItem("kronos.fontSize"));
-    return Number.isInteger(saved) && saved >= 12 && saved <= 20 ? saved : 15;
+    return Number.isInteger(saved) && saved >= 12 && saved <= 20
+      ? saved
+      : isIOS
+        ? 16
+        : 15;
   });
   useEffect(() => {
     document.documentElement.style.setProperty(
@@ -378,6 +385,29 @@ function App() {
     [openFileDialog],
   );
   const scroll = useRef<HTMLElement>(null);
+  const openDocument = useCallback(async (path: string) => {
+    if (await workspace.select(path)) {
+      if (compactNavigation()) setSidebar(false);
+    }
+  }, []);
+  useEffect(() => {
+    if (!isIOS) return;
+    const viewport = window.visualViewport;
+    const resize = () => {
+      document.documentElement.style.setProperty(
+        "--app-height",
+        `${viewport?.height ?? window.innerHeight}px`,
+      );
+    };
+    resize();
+    viewport?.addEventListener("resize", resize);
+    window.addEventListener("resize", resize);
+    return () => {
+      viewport?.removeEventListener("resize", resize);
+      window.removeEventListener("resize", resize);
+      document.documentElement.style.removeProperty("--app-height");
+    };
+  }, []);
   const update = workspace.edit;
   useEffect(() => {
     void workspace.initialize();
@@ -415,6 +445,7 @@ function App() {
     const icon = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
     if (icon) icon.href = `/icons/anubis-${dark ? "dark" : "light"}.png`;
     localStorage.setItem("typclone.dark", String(dark));
+    if (isIOS) void invoke("set_mobile_appearance", { dark });
   }, [dark]);
   useEffect(() => {
     const area = scroll.current;
@@ -553,19 +584,33 @@ function App() {
       onKeyDownCapture={(event) => {
         if (event.key === "Escape" || event.key === "Tab") revealControls();
       }}
-      className={`app ${resizing ? "resizing-sidebar" : ""} ${writing ? "focus-writing" : ""} ${navigator.platform.startsWith("Mac") ? "mac-window" : ""} ${sidebar ? "" : "no-sidebar"} ${focusMode && !source && !plainText && state.doc ? "focus-mode" : ""}`}
+      onPointerDownCapture={revealControls}
+      className={`app ${resizing ? "resizing-sidebar" : ""} ${writing ? "focus-writing" : ""} ${isIOS ? "ios-window" : navigator.platform.startsWith("Mac") ? "mac-window" : ""} ${sidebar ? "" : "no-sidebar"} ${focusMode && !source && !plainText && state.doc ? "focus-mode" : ""}`}
     >
       <aside id="sidebar" className="sidebar" inert={!sidebar || writing}>
-        <div className="brand" data-tauri-drag-region>
+        <div
+          className="brand"
+          data-tauri-drag-region={isIOS ? undefined : true}
+        >
           <img
             className="brand-icon"
-            data-tauri-drag-region
+            data-tauri-drag-region={isIOS ? undefined : true}
             src={`/icons/anubis-${dark ? "dark" : "light"}.png`}
             width={32}
             height={32}
             alt=""
           />
-          <span data-tauri-drag-region>Anubis</span>
+          <span data-tauri-drag-region={isIOS ? undefined : true}>Anubis</span>
+          {isIOS && (
+            <button
+              className="mobile-sidebar-close"
+              aria-label="Close files"
+              title="Close files"
+              onClick={() => setSidebar(false)}
+            >
+              <X size={20} />
+            </button>
+          )}
         </div>
         {state.workspace && (
           <div className="workspace-bar">
@@ -607,6 +652,9 @@ function App() {
               aria-label="Search files"
               name="search"
               autoComplete="off"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
               placeholder="Find files…"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
@@ -627,6 +675,7 @@ function App() {
               selectedFolder={state.folder}
               search={search}
               onRename={startRename}
+              onOpen={openDocument}
             />
           )}
           {state.workspace && !state.workspace.entries.length && (
@@ -727,7 +776,10 @@ function App() {
         />
       )}
       <section className="main">
-        <header data-tauri-drag-region inert={writing}>
+        <header
+          data-tauri-drag-region={isIOS ? undefined : true}
+          inert={writing}
+        >
           <div className="breadcrumbs">
             <button
               aria-label="Toggle sidebar"
@@ -738,6 +790,9 @@ function App() {
             >
               <PanelLeft size={17} />
             </button>
+            {isIOS && (
+              <span className="mobile-title">{doc.name || "Anubis"}</span>
+            )}
           </div>
           <div className="header-actions">
             <span
@@ -796,6 +851,17 @@ function App() {
               </button>
               {!source && !plainText && (
                 <span className="divider" aria-hidden="true" />
+              )}
+              {isIOS && (
+                <button
+                  aria-label="Hide keyboard"
+                  title="Hide keyboard"
+                  onClick={() =>
+                    (document.activeElement as HTMLElement | null)?.blur()
+                  }
+                >
+                  <ChevronDown size={20} />
+                </button>
               )}
               {!source && !plainText && (
                 <div className="formatting">
@@ -988,6 +1054,8 @@ function App() {
               aria-label={plainText ? "Text editor" : "Markdown source"}
               disabled={state.busy}
               spellCheck={false}
+              autoCapitalize="none"
+              autoCorrect="off"
               value={doc.markdown}
               onChange={(e) => update(e.target.value)}
             />
@@ -1017,7 +1085,14 @@ function App() {
                   : modal.kind === "copy"
                     ? await workspace.saveCopy(name)
                     : await workspace.create(name, modal.kind === "new-folder");
-              if (ok) setModal(null);
+              if (ok) {
+                setModal(null);
+                if (
+                  compactNavigation() &&
+                  (modal.kind === "new-file" || modal.kind === "copy")
+                )
+                  setSidebar(false);
+              }
             }}
           >
             <button
@@ -1037,15 +1112,21 @@ function App() {
                     ? "Save a copy"
                     : "New document"}
             </h2>
-            {modal.kind.startsWith("new") && (
+            {(modal.kind.startsWith("new") || modal.kind === "copy") && (
               <p className="modal-location">
-                In {state.folder || state.workspace?.name}
+                In{" "}
+                {(modal.kind === "copy" && state.recoveredFrom
+                  ? ""
+                  : state.folder) || state.workspace?.name}
               </p>
             )}
             <label>
               {modal.kind === "new-folder" ? "Folder name" : "File name"}
               <input
                 autoFocus
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
                 value={name}
                 onChange={(e) => setName(e.target.value)}
               />
@@ -1069,8 +1150,8 @@ createRoot(document.getElementById("root")!).render(
     <App />
   ) : (
     <div className="workspace-empty">
-      <h1>Open Anubis on your desktop</h1>
-      <p>Local folders are available in the desktop app.</p>
+      <h1>Open the Anubis app</h1>
+      <p>Local folders are available in the desktop and iOS apps.</p>
     </div>
   ),
 );

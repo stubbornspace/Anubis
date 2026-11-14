@@ -1,8 +1,9 @@
+mod recovery;
 mod workspace;
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
+#[cfg(not(target_os = "ios"))]
+use std::{fs, io::Write};
 use std::{
-    fs,
-    io::Write,
     path::PathBuf,
     sync::{
         Mutex,
@@ -10,7 +11,10 @@ use std::{
     },
 };
 use tauri::{Emitter, Manager};
+#[cfg(not(target_os = "ios"))]
 use tauri_plugin_dialog::DialogExt;
+#[cfg(target_os = "ios")]
+use tauri_plugin_ios_workspace::IosWorkspace;
 use workspace::{Listing, Snapshot};
 
 #[derive(Default)]
@@ -20,6 +24,7 @@ struct WorkspaceState {
     frontend_ready: AtomicBool,
     allow_exit: AtomicBool,
 }
+#[cfg(not(target_os = "ios"))]
 fn settings(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     let dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
@@ -52,16 +57,21 @@ fn activate(app: &tauri::AppHandle, path: PathBuf) -> Result<Listing, String> {
             "Live updates are unavailable: {e}. Use Refresh folder."
         ));
     }
-    let config = settings(app)?;
-    let mut temp =
-        tempfile::NamedTempFile::new_in(config.parent().unwrap()).map_err(|e| e.to_string())?;
-    temp.write_all(
-        serde_json::to_string(&path)
-            .map_err(|e| e.to_string())?
-            .as_bytes(),
-    )
-    .map_err(|e| e.to_string())?;
-    temp.persist(config).map_err(|e| e.to_string())?;
+    #[cfg(not(target_os = "ios"))]
+    {
+        let config = settings(app)?;
+        let mut temp =
+            tempfile::NamedTempFile::new_in(config.parent().unwrap()).map_err(|e| e.to_string())?;
+        temp.write_all(
+            serde_json::to_string(&path)
+                .map_err(|e| e.to_string())?
+                .as_bytes(),
+        )
+        .map_err(|e| e.to_string())?;
+        temp.persist(config).map_err(|e| e.to_string())?;
+    }
+    #[cfg(target_os = "ios")]
+    app.state::<IosWorkspace<tauri::Wry>>().commit(&path)?;
     let state = app.state::<WorkspaceState>();
     *state.root.lock().map_err(|e| e.to_string())? = Some(path);
     *state.watcher.lock().map_err(|e| e.to_string())? = watched.ok().map(|_| watcher);
@@ -70,16 +80,23 @@ fn activate(app: &tauri::AppHandle, path: PathBuf) -> Result<Listing, String> {
 #[tauri::command]
 async fn choose_workspace(app: tauri::AppHandle) -> Result<Option<Listing>, String> {
     tauri::async_runtime::spawn_blocking(move || {
-        let Some(folder) = app
-            .dialog()
-            .file()
-            .set_title("Choose a folder for Anubis")
-            .blocking_pick_folder()
-        else {
-            return Ok(None);
-        };
-        let path = folder.into_path().map_err(|e| e.to_string())?;
-        activate(&app, path).map(Some)
+        #[cfg(target_os = "ios")]
+        {
+            return open_ios_workspace(&app, false);
+        }
+        #[cfg(not(target_os = "ios"))]
+        {
+            let Some(folder) = app
+                .dialog()
+                .file()
+                .set_title("Choose a folder for Anubis")
+                .blocking_pick_folder()
+            else {
+                return Ok(None);
+            };
+            let path = folder.into_path().map_err(|e| e.to_string())?;
+            activate(&app, path).map(Some)
+        }
     })
     .await
     .map_err(|e| e.to_string())?
@@ -87,16 +104,38 @@ async fn choose_workspace(app: tauri::AppHandle) -> Result<Option<Listing>, Stri
 #[tauri::command]
 async fn restore_workspace(app: tauri::AppHandle) -> Result<Option<Listing>, String> {
     tauri::async_runtime::spawn_blocking(move || {
-        let config = settings(&app)?;
-        if !config.exists() {
-            return Ok(None);
-        };
-        let path: PathBuf = serde_json::from_slice(&fs::read(config).map_err(|e| e.to_string())?)
-            .map_err(|e| e.to_string())?;
-        activate(&app, path).map(Some)
+        #[cfg(target_os = "ios")]
+        {
+            return open_ios_workspace(&app, true);
+        }
+        #[cfg(not(target_os = "ios"))]
+        {
+            let config = settings(&app)?;
+            if !config.exists() {
+                return Ok(None);
+            };
+            let path: PathBuf =
+                serde_json::from_slice(&fs::read(config).map_err(|e| e.to_string())?)
+                    .map_err(|e| e.to_string())?;
+            activate(&app, path).map(Some)
+        }
     })
     .await
     .map_err(|e| e.to_string())?
+}
+#[cfg(target_os = "ios")]
+fn open_ios_workspace(app: &tauri::AppHandle, restore: bool) -> Result<Option<Listing>, String> {
+    let bridge = app.state::<IosWorkspace<tauri::Wry>>();
+    let Some(path) = bridge.folder(restore)? else {
+        return Ok(None);
+    };
+    match activate(app, path) {
+        Ok(listing) => Ok(Some(listing)),
+        Err(error) => {
+            bridge.cancel();
+            Err(error)
+        }
+    }
 }
 async fn run<T: Send + 'static>(
     app: tauri::AppHandle,
@@ -185,7 +224,111 @@ async fn delete_document(
     path: String,
     version: String,
 ) -> Result<(), String> {
+    #[cfg(target_os = "ios")]
+    {
+        let handle = app.clone();
+        return run(app, root, move |r| {
+            workspace::delete_with(r, &path, &version, |path| {
+                handle.state::<IosWorkspace<tauri::Wry>>().trash(path)
+            })
+        })
+        .await;
+    }
+    #[cfg(not(target_os = "ios"))]
     run(app, root, move |r| workspace::delete(r, &path, &version)).await
+}
+
+#[tauri::command]
+async fn finish_background_save(app: tauri::AppHandle) -> Result<(), String> {
+    #[cfg(target_os = "ios")]
+    return tauri::async_runtime::spawn_blocking(move || {
+        app.state::<IosWorkspace<tauri::Wry>>()
+            .finish_background_save()
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+    #[cfg(not(target_os = "ios"))]
+    {
+        let _ = app;
+        Ok(())
+    }
+}
+
+#[tauri::command]
+async fn set_mobile_appearance(app: tauri::AppHandle, dark: bool) -> Result<(), String> {
+    #[cfg(target_os = "ios")]
+    return tauri::async_runtime::spawn_blocking(move || {
+        app.state::<IosWorkspace<tauri::Wry>>().set_appearance(dark)
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+    #[cfg(not(target_os = "ios"))]
+    {
+        let _ = (app, dark);
+        Ok(())
+    }
+}
+
+#[tauri::command]
+async fn store_recovery_draft(
+    app: tauri::AppHandle,
+    root: String,
+    path: String,
+    name: String,
+    markdown: String,
+    version: String,
+) -> Result<(), String> {
+    #[cfg(target_os = "ios")]
+    {
+        let directory = app.path().app_data_dir().map_err(|e| e.to_string())?;
+        let draft = recovery::RecoveryDraft {
+            root: root.clone(),
+            document: Snapshot {
+                path,
+                name,
+                markdown,
+                version,
+            },
+        };
+        run(app, root, move |_| recovery::store(&directory, &draft)).await
+    }
+    #[cfg(not(target_os = "ios"))]
+    {
+        let _ = (app, root, path, name, markdown, version);
+        Ok(())
+    }
+}
+
+#[tauri::command]
+async fn load_recovery_draft(
+    app: tauri::AppHandle,
+) -> Result<Option<recovery::RecoveryDraft>, String> {
+    #[cfg(target_os = "ios")]
+    return tauri::async_runtime::spawn_blocking(move || {
+        recovery::load(&app.path().app_data_dir().map_err(|e| e.to_string())?)
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+    #[cfg(not(target_os = "ios"))]
+    {
+        let _ = app;
+        Ok(None)
+    }
+}
+
+#[tauri::command]
+async fn clear_recovery_draft(app: tauri::AppHandle) -> Result<(), String> {
+    #[cfg(target_os = "ios")]
+    return tauri::async_runtime::spawn_blocking(move || {
+        recovery::clear(&app.path().app_data_dir().map_err(|e| e.to_string())?)
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+    #[cfg(not(target_os = "ios"))]
+    {
+        let _ = app;
+        Ok(())
+    }
 }
 
 #[tauri::command]
@@ -199,7 +342,10 @@ fn finish_exit(app: tauri::AppHandle, state: tauri::State<WorkspaceState>) {
 }
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run_app() {
-    tauri::Builder::default()
+    let builder = tauri::Builder::default();
+    #[cfg(target_os = "ios")]
+    let builder = builder.plugin(tauri_plugin_ios_workspace::init());
+    builder
         .plugin(tauri_plugin_dialog::init())
         .manage(WorkspaceState::default())
         .invoke_handler(tauri::generate_handler![
@@ -213,11 +359,20 @@ pub fn run_app() {
             rename_document,
             delete_document,
             frontend_ready,
-            finish_exit
+            finish_exit,
+            finish_background_save,
+            set_mobile_appearance,
+            store_recovery_draft,
+            load_recovery_draft,
+            clear_recovery_draft
         ])
         .build(tauri::generate_context!())
         .expect("error while building Anubis")
         .run(|app, event| {
+            #[cfg(target_os = "ios")]
+            if matches!(event, tauri::RunEvent::Resumed) {
+                let _ = app.emit("workspace-changed", ());
+            }
             let state = app.state::<WorkspaceState>();
             if !state.frontend_ready.load(Ordering::SeqCst)
                 || state.allow_exit.load(Ordering::SeqCst)

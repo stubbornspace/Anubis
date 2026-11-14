@@ -107,6 +107,8 @@ export const test = base.extend({
             case "plugin:event|unlisten":
               return;
             case "frontend_ready":
+            case "finish_background_save":
+            case "set_mobile_appearance":
               return;
             case "finish_exit":
               w.__nativeTest.exited = true;
@@ -116,13 +118,34 @@ export const test = base.extend({
                 ? args.buttons?.OkCancelCustom?.[0] || "Ok"
                 : "Cancel";
             case "restore_workspace":
+              if (data.restoreFailure)
+                throw new Error("The folder is unavailable");
               return data.chosen ? listing() : null;
             case "choose_workspace":
               data.chosen = true;
+              data.restoreFailure = false;
               store(data);
               return listing();
             case "list_workspace":
               return listing();
+            case "store_recovery_draft":
+              data.recovery = {
+                root: args.root,
+                document: {
+                  path: args.path,
+                  name: args.name,
+                  markdown: args.markdown,
+                  version: args.version,
+                },
+              };
+              store(data);
+              return;
+            case "load_recovery_draft":
+              return data.recovery || null;
+            case "clear_recovery_draft":
+              delete data.recovery;
+              store(data);
+              return;
             case "read_document":
               return snapshot(args.path);
             case "save_document":

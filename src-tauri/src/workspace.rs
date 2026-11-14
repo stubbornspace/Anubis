@@ -16,7 +16,7 @@ pub struct Entry {
     pub directory: bool,
     pub children: Vec<Entry>,
 }
-#[derive(Clone, Serialize, Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct Snapshot {
     pub path: String,
     pub name: String,
@@ -269,13 +269,13 @@ pub fn create_folder(root: &Path, parent: &str, name: &str) -> Result<(), String
     validate_name(name, false)?;
     fs::create_dir(resolve(root, parent)?.join(name)).map_err(error)
 }
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "ios"))]
 fn rename_noclobber(source: &Path, dest: &Path) -> Result<(), String> {
     use rustix::fs::{CWD, RenameFlags, renameat_with};
     // RENAME_EXCL also permits case-only renames on case-insensitive APFS.
     renameat_with(CWD, source, CWD, dest, RenameFlags::NOREPLACE).map_err(error)
 }
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(target_os = "macos", target_os = "ios")))]
 fn rename_noclobber(source: &Path, dest: &Path) -> Result<(), String> {
     // hard_link creates a new directory entry without ever replacing an existing file.
     fs::hard_link(source, dest).map_err(error)?;
@@ -298,10 +298,21 @@ pub fn rename(root: &Path, path: &str, name: &str, version: &str) -> Result<Snap
     rename_noclobber(&source, &dest).map_err(|e| format!("Could not rename to {name}: {e}"))?;
     Ok(renamed)
 }
-pub fn delete(root: &Path, path: &str, version: &str) -> Result<(), String> {
+pub fn delete_with(
+    root: &Path,
+    path: &str,
+    version: &str,
+    trash: impl FnOnce(&Path) -> Result<(), String>,
+) -> Result<(), String> {
     let path = resolve(root, path)?;
     verify(&bytes(&path)?, version)?;
-    trash::delete(path).map_err(error)
+    trash(&path)
+}
+#[cfg(not(target_os = "ios"))]
+pub fn delete(root: &Path, path: &str, version: &str) -> Result<(), String> {
+    delete_with(root, path, version, |path| {
+        trash::delete(path).map_err(error)
+    })
 }
 
 #[cfg(test)]
@@ -411,6 +422,30 @@ mod tests {
         fs::remove_file(r.join("a.md")).unwrap();
         assert!(save(r, "a.md", "local", &a.version).is_err());
         assert!(!r.join("a.md").exists());
+    }
+    #[test]
+    fn delegated_trash_checks_paths_and_versions_and_preserves_files_on_failure() {
+        let d = root();
+        let r = d.path();
+        let doc = create(r, "", "note.md", "Keep this").unwrap();
+        assert!(
+            delete_with(r, "../note.md", &doc.version, |_| panic!(
+                "Invalid path reached Trash"
+            ))
+            .is_err()
+        );
+        assert!(
+            delete_with(r, "note.md", "stale", |_| panic!(
+                "Stale version reached Trash"
+            ))
+            .is_err()
+        );
+        let result = delete_with(r, "note.md", &doc.version, |path| {
+            assert_eq!(path, r.join("note.md"));
+            Err("Trash is unavailable".into())
+        });
+        assert_eq!(result.unwrap_err(), "Trash is unavailable");
+        assert_eq!(read(r, "note.md").unwrap().markdown, "Keep this");
     }
     #[test]
     fn rejects_large_files_and_readonly_saves() {

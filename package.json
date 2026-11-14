@@ -13,8 +13,12 @@
     "desktop:dev": "tauri dev",
     "desktop:build": "tauri build",
     "desktop:check": "cargo check --manifest-path src-tauri/Cargo.toml",
+    "ios:init": "tauri ios init",
+    "ios:dev": "tauri ios dev",
+    "ios:build": "tauri ios build",
+    "ios:simulator": "tauri ios build --debug --target aarch64-sim --no-sign",
     "test:webkit": "playwright test --project=webkit",
-    "frontend:dev": "vite --host 127.0.0.1",
+    "frontend:dev": "vite",
     "frontend:build": "tsc -b && vite build",
     "test:native": "cargo test --manifest-path src-tauri/Cargo.toml --lib"
   },
@@ -35,6 +39,7 @@
   "devDependencies": {
     "@playwright/test": "^1.64.1",
     "@tauri-apps/cli": "^2.12.4",
+    "@types/node": "^22.20.5",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^6.1.2",

@@ -1,0 +1,14 @@
+/node_modules/
+/dist/
+/test-results/
+/playwright-report/
+*.tsbuildinfo
+.DS_Store
+**/.tauri/
+**/xcuserdata/
+**/DerivedData/
+/src-tauri/gen/apple/build/
+/src-tauri/gen/apple/Externals/
+/src-tauri/gen/apple/assets/
+/src-tauri/plugins/*/target/
+/src-tauri/plugins/*/Cargo.lock

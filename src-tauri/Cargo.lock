@@ -53,6 +53,7 @@ dependencies = [
  "tauri",
  "tauri-build",
  "tauri-plugin-dialog",
+ "tauri-plugin-ios-workspace",
  "tempfile",
  "trash",
 ]
@@ -3505,6 +3506,16 @@ dependencies = [
  "thiserror 2.0.21",
  "toml 1.2.1+spec-1.1.0",
  "url",
+]
+
+[[package]]
+name = "tauri-plugin-ios-workspace"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-plugin",
 ]
 
 [[package]]

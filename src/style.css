@@ -57,7 +57,7 @@ input {
 .app {
   display: flex;
   height: 100%;
-  height: 100dvh;
+  height: var(--app-height, 100dvh);
   overflow: hidden;
 }
 .sidebar {
@@ -1067,4 +1067,139 @@ header {
   min-width: 0;
   padding: 6px 4px;
   gap: 8px;
+}
+
+/* iOS keeps writing above the keyboard and clear of the camera and home indicator. */
+.ios-window {
+  position: relative;
+  -webkit-tap-highlight-color: transparent;
+}
+.ios-window .sidebar {
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+  padding-left: max(15px, env(safe-area-inset-left));
+}
+.ios-window header {
+  height: auto;
+  min-height: calc(56px + env(safe-area-inset-top));
+  padding-top: calc(8px + env(safe-area-inset-top));
+  padding-bottom: 8px;
+  padding-left: max(12px, env(safe-area-inset-left));
+  padding-right: max(12px, env(safe-area-inset-right));
+}
+.ios-window .breadcrumbs {
+  overflow: hidden;
+}
+.mobile-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 550;
+}
+.ios-window button {
+  min-width: 44px;
+  min-height: 44px;
+}
+.ios-window .file-actions {
+  opacity: 1;
+}
+.ios-window .files .file-actions > button {
+  width: 44px;
+  height: 44px;
+}
+.ios-window .files .folder-row button {
+  min-height: 44px;
+}
+.ios-window .file-menu button {
+  width: 100%;
+}
+.ios-window .editor-controls {
+  justify-content: flex-start;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.ios-window .editor-controls > *,
+.ios-window .formatting {
+  flex-shrink: 0;
+}
+.ios-window .search input,
+.ios-window .modal input {
+  font-size: 16px;
+}
+.ios-window .page-scroll {
+  padding: 28px max(20px, env(safe-area-inset-right))
+    max(40px, env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left));
+}
+.ios-window.focus-mode .page-scroll {
+  padding-block: 0;
+}
+.ios-window .source {
+  height: calc(var(--app-height, 100dvh) - 190px);
+  min-height: 200px;
+}
+.ios-window .action-error {
+  bottom: max(12px, env(safe-area-inset-bottom));
+}
+.ios-window > .action-error {
+  position: absolute;
+}
+.ios-window .file-dialog,
+.ios-window .settings-dialog {
+  top: max(12px, env(safe-area-inset-top));
+  bottom: calc(
+    100dvh - var(--app-height, 100dvh) + max(12px, env(safe-area-inset-bottom))
+  );
+  max-height: calc(
+    var(--app-height, 100dvh) - env(safe-area-inset-top) -
+      env(safe-area-inset-bottom) - 24px
+  );
+  overflow-y: auto;
+}
+.ios-window .file-dialog .action-error {
+  position: static;
+  transform: none;
+  max-width: 100%;
+  margin-top: 12px;
+}
+.ios-window .brand {
+  font-size: 20px;
+}
+.mobile-sidebar-close {
+  display: none;
+  margin-left: auto;
+}
+@media (max-width: 900px) {
+  .ios-window .sidebar {
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: min(340px, 88vw);
+    z-index: 12;
+    padding-right: 15px;
+  }
+  .ios-window.no-sidebar .sidebar {
+    display: none;
+    margin-left: 0;
+  }
+  .ios-window .sidebar-dismiss {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 11;
+    background: #0004;
+    border-radius: 0;
+  }
+  .ios-window .mobile-sidebar-close {
+    display: inline-flex;
+  }
+  .ios-window .sidebar-resizer {
+    display: none;
+  }
+  .ios-window .header-actions {
+    display: contents;
+  }
+  .ios-window .editor-controls {
+    width: 100%;
+  }
 }

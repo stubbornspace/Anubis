@@ -1,0 +1,12 @@
+{
+  "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
+  "app": {
+    "security": {
+      "devCsp": "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' ipc: http://ipc.localhost ws: wss:; object-src 'none'; base-uri 'self'; frame-src 'none'"
+    },
+    "windows": [{ "label": "main", "title": "Anubis", "fullscreen": false }]
+  },
+  "bundle": {
+    "iOS": { "minimumSystemVersion": "17.0" }
+  }
+}

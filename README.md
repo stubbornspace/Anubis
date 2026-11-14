@@ -52,11 +52,39 @@ For a standalone simulator app when SDK/runtime versions differ, run `npm run io
 
 Physical-device installation and distribution require an Apple development team and provisioning. Set `APPLE_DEVELOPMENT_TEAM` locally, or select your team in Xcode. Do not commit signing identities or provisioning profiles. The existing bundle identifier `com.stubbornspace.kronos` is retained. The generated Xcode project is included; `npm run ios:init` can regenerate it, and `xcodegen generate --spec src-tauri/gen/apple/project.yml` updates it after changing the project definition.
 
-Choose a folder through the native Files picker. A local `Notes` folder is available inside Anubis's Documents directory, visible in Files under **On My iPhone/iPad → Anubis**. The native bridge retains security-scoped access and saves a bookmark to reopen the chosen folder after relaunch. Canceling or failing to open a new folder retains the previous workspace. Use locally available UTF-8 files; this is not a cloud synchronization client.
+Choose a folder through the native Files picker. A local `Notes` folder is available inside Anubis's Documents directory, visible in Files under **On My iPhone/iPad → Anubis**. The native bridge retains security-scoped access and saves a bookmark to reopen the chosen folder after relaunch. Canceling or failing to open a new folder retains the previous workspace. Choose either a local folder or a folder in iCloud Drive. Anubis coordinates access with Apple’s document system; iCloud Drive transfers the files between devices. Documents remain ordinary UTF-8 files.
 
 On iOS, deletion uses the system Trash API; recover supported files in Files → Recently Deleted. If the folder provider cannot trash a file, Anubis reports the error and keeps the file. Switching away from the app requests an immediate save and a short native background task to let it finish.
 
-Before each iOS save, Anubis writes a private recovery draft in native app storage. Successful saves clear it. If a save fails and iOS terminates the app, opening a workspace on the next launch restores that draft and offers **Save a copy** or a confirmed discard/reload. Recovered copies are created at the root of the chosen workspace, including when the original folder is unavailable. Recovery is not a backup.
+Before each macOS or iOS save, Anubis writes a private recovery draft in native app storage. Successful saves clear it. If a save fails and the app terminates, opening a workspace on the next launch restores that draft and offers **Save a copy** or a confirmed discard/reload. Recovered copies are created at the root of the chosen workspace, including when the original folder is unavailable. Recovery is not a backup.
+
+## Optional iCloud Drive folders
+
+Choose a folder in iCloud Drive using **Choose folder** on each device. Select the same folder on your Mac and iPhone/iPad to work on the same documents. Local folders remain available through the same picker; nothing is moved into iCloud automatically. Folder choices and appearance preferences remain specific to each device. The default **On My iPhone/iPad → Anubis → Notes** folder is local and does not sync.
+
+Apple’s background service transfers the files. **Saved locally · Upload pending** means the save reached this device; **Uploaded to iCloud** means Apple reports that file uploaded, not that every other device has downloaded it. Download and upload errors remain visible. Cloud-only documents download when opened; access requests are cancellable after 30 seconds if the provider does not grant access. If a download fails, the previous document remains available. Opening a file never rewrites its contents.
+
+Both Apple targets use native coordinated file access and a file presenter for external changes, alongside the existing content-version checks and private recovery drafts. Downloaded documents can be edited offline and uploaded later. Keep independent backups; iCloud is a synchronization service.
+
+If iCloud reports competing versions, saving, renaming, and deleting the affected original are blocked. **Keep both versions** saves any unsaved editor text as a separate document, then copies each competing iCloud version to a uniquely named sibling file before resolving that version. Copies never overwrite existing files. A partial failure leaves uncopied versions intact. Review the resulting documents before deleting unwanted copies. This is document version recovery, not collaborative editing or automatic text merging.
+
+For an opt-in native test using only a temporary folder inside your iCloud Drive:
+
+```sh
+ANUBIS_ICLOUD_TEST_ROOT="$HOME/Library/Mobile Documents/com~apple~CloudDocs" \
+  cargo test --manifest-path src-tauri/Cargo.toml --lib real_icloud_folder_round_trip -- --ignored
+```
+
+A separate opt-in Foundation test verifies confirmed upload, eviction of the local copy, coordinated re-download, and Trash:
+
+```sh
+xcrun clang -fobjc-arc -fblocks -framework Foundation \
+  src-tauri/apple/FileAccess.m src-tauri/apple/tests/CloudDownload.m \
+  -o /tmp/anubis-cloud-download-test
+/tmp/anubis-cloud-download-test "$HOME/Library/Mobile Documents/com~apple~CloudDocs"
+```
+
+The ordinary test suite does not touch iCloud. The native macOS folder and cloud-only download tests have passed against iCloud Drive, and the iOS workspace smoke test covers native local files. Physical Mac–iPhone/iPad transfer and native offline version conflicts still need validation on devices signed in to the same iCloud account; browser conflict tests use mocked provider responses.
 
 ## Folder workspaces
 
@@ -73,14 +101,14 @@ Edits autosave after a short pause. Navigation, rename, deletion, folder switchi
 
 Native saves use a same-directory temporary file and atomic replacement. Existing UTF-8 BOM and CRLF line endings are retained. Content versions are checked before replacement to detect external edits. Save failures or conflicts keep your edits in the editor and block navigation/quit until resolved. Use **Reload from disk** to discard unsaved changes after confirmation, or **Save a copy** to create a new file without overwriting the disk version.
 
-Hidden files/directories and symbolic links are excluded from discovery. File operations are confined to the selected folder. Files must be UTF-8 text, at most 10 MB; the tree scan is limited to 20,000 entries and 64 levels. Unreadable folders are reported. Renames never replace existing files. macOS and iOS use an exclusive native rename, including for case-only changes; other platforms use a hard-link operation and may fail on filesystems without hard-link support. A file changed at precisely the same moment by another program is not covered by an inter-process lock; avoid editing the same file simultaneously in multiple apps.
+Hidden files/directories and symbolic links are excluded from discovery. File operations are confined to the selected folder. Files must be UTF-8 text, at most 10 MB; the tree scan is limited to 20,000 entries and 64 levels. Unreadable folders are reported. Renames never replace existing files. macOS and iOS coordinate file access and use an exclusive native rename, including for case-only changes; other platforms use a hard-link operation and may fail on filesystems without hard-link support. A file changed at precisely the same moment by another program is not covered by an inter-process lock; avoid editing the same file simultaneously in multiple apps.
 
 The previous version's webview-stored notes are left untouched, but are no longer loaded as the workspace or migrated automatically. Only UI preferences and the last active relative path remain in webview storage. Local files and autosave are not a backup.
 
 ## Editing
 
 - Headings, bold/italic, lists, quotes, code, task lists, and tables.
-- Settings with The Blues and Atom One palettes, each with remembered light/dark appearance.
+- Settings with The Blues and Atom One palettes, each with remembered light/dark appearance. **App zoom** scales the whole interface—editor, sidebar, icons, controls, and dialogs—from 75% to 150%, with a reset to 100%. The preference stays on each device. Existing `kronos.fontSize` values migrate once to an equivalent `kronos.appZoom` percentage; the old key is retained for compatibility.
 - Source mode, light/dark appearance, collapsible sidebar, and Focus mode with Markdown scrolling that keeps the typing line slightly above center and controls that fade while typing, returning after two seconds idle or pointer movement.
 - Cmd/Ctrl+O chooses a folder, +N creates a file, +S saves, +/ switches source mode, and +Backslash toggles the sidebar.
 - Unsupported Markdown syntax can be normalized after rich-text edits. Use source mode when exact source syntax matters.
@@ -100,4 +128,4 @@ Rust tests perform real filesystem operations in temporary folders, including re
 
 ## Scope and background
 
-See [analysis/REPORT.md](analysis/REPORT.md) for the initial Typora feature research. The interface, editor integration, and filesystem implementation are original code. Advanced Markdown features, drag-and-drop moves, multiple workspaces, folder rename/delete, cloud synchronization, signed distribution, and Android support are not implemented.
+See [analysis/REPORT.md](analysis/REPORT.md) for the initial Typora feature research. The interface, editor integration, and filesystem implementation are original code. Advanced Markdown features, drag-and-drop moves, multiple workspaces, folder rename/delete, automatic conflict merging, signed distribution, and Android support are not implemented.

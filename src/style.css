@@ -1,4 +1,5 @@
 :root {
+  font-size: calc(16px * var(--app-zoom, 1));
   font-family:
     system-ui,
     -apple-system,
@@ -16,6 +17,10 @@ body,
   width: 100%;
   height: 100%;
   overflow: hidden;
+}
+#root {
+  container: app-layout / size;
+  height: var(--app-height, 100%);
 }
 body {
   margin: 0;
@@ -37,15 +42,15 @@ button:disabled {
 }
 button:focus-visible,
 input:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 3px;
+  outline: 0.125rem solid var(--accent);
+  outline-offset: 0.1875rem;
 }
 button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 9px;
-  border-radius: 5px;
+  gap: 0.5625rem;
+  border-radius: 0.3125rem;
 }
 button:hover {
   background: var(--hover);
@@ -62,44 +67,44 @@ input {
 }
 .sidebar {
   position: relative;
-  width: var(--sidebar-width, 258px);
+  width: var(--sidebar-width, 16.125rem);
   flex-shrink: 0;
   min-height: 0;
   background: var(--sidebar);
   display: flex;
   flex-direction: column;
-  padding: 0 15px;
+  padding: 0 0.9375rem;
 }
 .no-sidebar .sidebar {
-  margin-left: calc(-1 * var(--sidebar-width, 258px));
+  margin-left: calc(-1 * var(--sidebar-width, 16.125rem));
 }
 .brand {
-  height: 64px;
+  height: 4rem;
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 0 12px;
-  font-size: 20px;
-  line-height: 28px;
+  gap: 0.5rem;
+  padding: 0 0.75rem;
+  font-size: 1.25rem;
+  line-height: 1.75rem;
   font-weight: 650;
-  letter-spacing: -0.4px;
+  letter-spacing: -0.025rem;
 }
 .brand-icon {
-  width: 26px;
-  height: 26px;
+  width: 1.625rem;
+  height: 1.625rem;
   display: block;
   flex-shrink: 0;
-  border-radius: 8px;
+  border-radius: 0.5rem;
 }
 .search {
   display: flex;
   align-items: center;
-  gap: 7px;
-  border: 1px solid var(--line);
+  gap: 0.4375rem;
+  border: 0.0625rem solid var(--line);
   background: var(--paper);
-  border-radius: 6px;
-  margin: 18px 0 12px;
-  padding: 8px;
+  border-radius: 0.375rem;
+  margin: 1.125rem 0 0.75rem;
+  padding: 0.5rem;
   color: var(--muted);
 }
 .search input {
@@ -107,15 +112,15 @@ input {
   outline: 0;
   background: none;
   width: 100%;
-  font-size: 12px;
+  font-size: 0.75rem;
 }
 .files button {
   width: 100%;
   justify-content: flex-start;
-  padding: 11px 13px;
-  font-size: 12px;
-  margin: 2px 0;
-  gap: 10px;
+  padding: 0.6875rem 0.8125rem;
+  font-size: 0.75rem;
+  margin: 0.125rem 0;
+  gap: 0.625rem;
   text-align: left;
 }
 .files button svg {
@@ -141,14 +146,14 @@ input {
   background: var(--paper);
 }
 header {
-  height: 59px;
+  height: 3.6875rem;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 0 25px;
+  padding: 0 1.5625rem;
   flex-shrink: 0;
   position: relative;
-  font-size: 11px;
+  font-size: 0.6875rem;
   color: var(--muted);
   z-index: 5;
 }
@@ -156,31 +161,31 @@ header {
 .header-actions {
   display: flex;
   align-items: center;
-  gap: 13px;
+  gap: 0.8125rem;
 }
 .breadcrumbs > button,
 .header-actions > button {
-  padding: 6px;
+  padding: 0.375rem;
 }
 .divider {
-  height: 14px;
-  width: 1px;
+  height: 0.875rem;
+  width: 0.0625rem;
   background: var(--line);
   display: inline-block;
 }
 .saved {
   display: flex;
   align-items: center;
-  gap: 5px;
-  font-size: 10px;
-  margin-right: 8px;
+  gap: 0.3125rem;
+  font-size: 0.625rem;
+  margin-right: 0.5rem;
 }
 .page-scroll {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior-y: contain;
-  padding: 56px max(40px, calc((100% - 730px) / 2)) 60px;
+  padding: 3.5rem max(2.5rem, calc((100% - 45.625rem) / 2)) 3.75rem;
   scroll-behavior: smooth;
 }
 .page-scroll,
@@ -194,7 +199,7 @@ header {
 .writing {
   outline: none;
   font-family: inherit;
-  font-size: 15px;
+  font-size: 0.9375rem;
   line-height: 1.95;
   color: var(--text);
   min-height: 60vh;
@@ -203,65 +208,65 @@ header {
 .writing h2,
 .writing h3 {
   font-weight: 600;
-  letter-spacing: -0.7px;
+  letter-spacing: -0.04375rem;
   line-height: 1.4;
-  scroll-margin-top: 30px;
+  scroll-margin-top: 1.875rem;
 }
 .writing h1 {
-  font-size: 35px;
-  margin: 0 0 28px;
-  letter-spacing: -1.3px;
+  font-size: 2.1875rem;
+  margin: 0 0 1.75rem;
+  letter-spacing: -0.08125rem;
 }
 .writing h2 {
-  font-size: 22px;
-  margin: 39px 0 16px;
+  font-size: 1.375rem;
+  margin: 2.4375rem 0 1rem;
 }
 .writing h3 {
-  font-size: 18px;
-  margin: 28px 0 14px;
+  font-size: 1.125rem;
+  margin: 1.75rem 0 0.875rem;
 }
 .writing p {
-  margin: 15px 0;
+  margin: 0.9375rem 0;
 }
 .writing strong {
   font-weight: 600;
 }
 .writing ul,
 .writing ol {
-  padding-left: 23px;
-  margin: 16px 0;
+  padding-left: 1.4375rem;
+  margin: 1rem 0;
 }
 .writing li {
-  padding-left: 3px;
-  margin: 6px 0;
+  padding-left: 0.1875rem;
+  margin: 0.375rem 0;
 }
 .writing li p {
   margin: 0;
 }
 .writing blockquote {
-  border-left: 2px solid var(--accent);
-  padding: 2px 20px;
-  margin: 25px 0;
+  border-left: 0.125rem solid var(--accent);
+  padding: 0.125rem 1.25rem;
+  margin: 1.5625rem 0;
   color: var(--muted);
   font-style: italic;
 }
 .writing blockquote p {
-  margin: 5px 0;
+  margin: 0.3125rem 0;
 }
 .writing pre {
   background: var(--code);
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  padding: 20px;
+  border: 0.0625rem solid var(--line);
+  border-radius: 0.375rem;
+  padding: 1.25rem;
   line-height: 1.7;
-  font-size: 12px;
+  font-size: 0.75rem;
   overflow-x: auto;
 }
 .writing code {
   font-family: ui-monospace, SFMono-Regular, monospace;
   background: var(--code);
-  padding: 2px 4px;
-  border-radius: 3px;
+  padding: 0.125rem 0.25rem;
+  border-radius: 0.1875rem;
   font-size: 0.85em;
 }
 .writing pre code {
@@ -274,8 +279,8 @@ header {
 }
 .writing hr {
   border: 0;
-  border-top: 1px solid var(--line);
-  margin: 30px 0;
+  border-top: 0.0625rem solid var(--line);
+  margin: 1.875rem 0;
 }
 .writing ul[data-type="taskList"] {
   list-style: none;
@@ -283,7 +288,7 @@ header {
 }
 .writing ul[data-type="taskList"] > li {
   display: flex;
-  gap: 10px;
+  gap: 0.625rem;
   align-items: baseline;
 }
 .writing ul[data-type="taskList"] > li > label {
@@ -295,8 +300,8 @@ header {
 }
 .writing input[type="checkbox"] {
   accent-color: var(--accent);
-  width: 13px;
-  height: 13px;
+  width: 0.8125rem;
+  height: 0.8125rem;
   cursor: pointer;
 }
 .writing li[data-checked="true"] > div {
@@ -307,14 +312,14 @@ header {
   border-collapse: collapse;
   width: 100%;
   table-layout: fixed;
-  margin: 20px 0;
+  margin: 1.25rem 0;
 }
 .writing td,
 .writing th {
-  border: 1px solid var(--line);
-  padding: 7px;
+  border: 0.0625rem solid var(--line);
+  padding: 0.4375rem;
   position: relative;
-  min-width: 70px;
+  min-width: 4.375rem;
 }
 .writing th {
   background: var(--code);
@@ -332,26 +337,26 @@ header {
 .source {
   width: 100%;
   resize: none;
-  min-height: calc(100vh - 250px);
-  height: 1100px;
+  min-height: calc(100vh - 15.625rem);
+  height: 68.75rem;
   border: 0;
   background: none;
   color: var(--text);
   font:
-    13px/1.9 ui-monospace,
+    0.8125rem/1.9 ui-monospace,
     SFMono-Regular,
     monospace;
   tab-size: 2;
 }
 .empty {
   color: var(--muted);
-  font-size: 12px;
-  padding: 12px;
+  font-size: 0.75rem;
+  padding: 0.75rem;
 }
 
 .formatting {
   display: flex;
-  gap: 3px;
+  gap: 0.1875rem;
 }
 .enabled {
   color: var(--accent);
@@ -369,42 +374,42 @@ header {
   overflow: visible;
   background: transparent;
   color: var(--text);
-  max-width: calc(100vw - 32px);
+  max-width: calc(100vw - 2rem);
 }
 .modal {
   position: relative;
   background: var(--paper);
-  padding: 30px;
-  border-radius: 12px;
-  width: 350px;
-  box-shadow: 0 20px 80px #0003;
+  padding: 1.875rem;
+  border-radius: 0.75rem;
+  width: 21.875rem;
+  box-shadow: 0 1.25rem 5rem #0003;
 }
 .modal h2 {
-  font-size: 20px;
+  font-size: 1.25rem;
 }
 .modal label {
-  font-size: 12px;
+  font-size: 0.75rem;
   display: block;
 }
 .modal input {
   display: block;
   width: 100%;
-  border: 1px solid var(--line);
+  border: 0.0625rem solid var(--line);
   background: var(--sidebar);
-  border-radius: 5px;
-  padding: 10px;
-  margin: 10px 0 20px;
+  border-radius: 0.3125rem;
+  padding: 0.625rem;
+  margin: 0.625rem 0 1.25rem;
 }
 .modal-close {
   position: absolute;
-  right: 15px;
-  top: 15px;
+  right: 0.9375rem;
+  top: 0.9375rem;
 }
 .primary {
   background: var(--accent);
   color: var(--accent-foreground);
-  padding: 10px 15px;
-  font-size: 12px;
+  padding: 0.625rem 0.9375rem;
+  font-size: 0.75rem;
 }
 .focus-mode .page-scroll {
   padding-block: 0;
@@ -414,58 +419,58 @@ header {
   padding-block: var(--focus-space, 50dvh);
 }
 
-@media (min-width: 1500px) {
+@container app-layout (min-width: 93.75rem) {
   .page-scroll {
-    padding-top: 65px;
+    padding-top: 4.0625rem;
   }
   .writing {
-    font-size: 17px;
+    font-size: 1.0625rem;
   }
   .writing h1 {
-    font-size: 40px;
+    font-size: 2.5rem;
   }
 }
-@media (max-width: 900px) {
+@container app-layout (max-width: 56.25rem) {
   .sidebar {
-    width: var(--sidebar-width, 258px);
+    width: var(--sidebar-width, 16.125rem);
   }
   .no-sidebar .sidebar {
-    margin-left: calc(-1 * var(--sidebar-width, 258px));
+    margin-left: calc(-1 * var(--sidebar-width, 16.125rem));
   }
   .page-scroll {
-    padding: 35px 35px;
+    padding: 2.1875rem 2.1875rem;
   }
 }
-@media (max-width: 600px) {
+@container app-layout (max-width: 37.5rem) {
   .sidebar {
-    width: 195px;
+    width: 12.1875rem;
   }
   .no-sidebar .sidebar {
-    margin-left: -195px;
+    margin-left: -12.1875rem;
   }
   .brand {
-    padding: 0 5px;
+    padding: 0 0.3125rem;
   }
   .page-scroll {
-    padding: 28px 22px;
+    padding: 1.75rem 1.375rem;
   }
   .writing {
-    font-size: 14px;
+    font-size: 0.875rem;
   }
   .writing h1 {
-    font-size: 29px;
+    font-size: 1.8125rem;
   }
   .writing h2 {
-    font-size: 20px;
+    font-size: 1.25rem;
   }
   header {
-    padding: 0 12px;
+    padding: 0 0.75rem;
   }
   .breadcrumbs {
-    gap: 5px;
+    gap: 0.3125rem;
   }
   .header-actions {
-    gap: 2px;
+    gap: 0.125rem;
   }
 }
 @media print {
@@ -529,7 +534,7 @@ textarea::placeholder {
   overflow-y: auto;
   overscroll-behavior-y: contain;
   min-height: 0;
-  padding-bottom: 16px;
+  padding-bottom: 1rem;
 }
 .breadcrumbs {
   min-width: 0;
@@ -538,8 +543,8 @@ textarea::placeholder {
   flex-shrink: 0;
 }
 .search:focus-within {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
+  outline: 0.125rem solid var(--accent);
+  outline-offset: 0.125rem;
 }
 .writing {
   overflow-wrap: anywhere;
@@ -549,13 +554,13 @@ textarea::placeholder {
   display: none;
 }
 .modal {
-  max-width: calc(100vw - 32px);
+  max-width: calc(100vw - 2rem);
 }
-@media (max-width: 600px) {
+@container app-layout (max-width: 37.5rem) {
   .sidebar {
     position: absolute;
     inset: 0 auto 0 0;
-    width: min(280px, 85vw);
+    width: min(17.5rem, 85vw);
     z-index: 12;
   }
   .no-sidebar .sidebar {
@@ -573,9 +578,9 @@ textarea::placeholder {
     background: #0004;
   }
   .saved {
-    max-width: 140px;
-    font-size: 9px;
-    margin-right: 2px;
+    max-width: 8.75rem;
+    font-size: 0.5625rem;
+    margin-right: 0.125rem;
   }
   .formatting {
     gap: 0;
@@ -593,21 +598,21 @@ textarea::placeholder {
 .editor-controls {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 0.375rem;
 }
 .editor-controls button {
-  min-width: 28px;
-  min-height: 28px;
-  padding: 5px;
+  min-width: 1.75rem;
+  min-height: 1.75rem;
+  padding: 0.3125rem;
 }
-@media (max-width: 900px) {
+@container app-layout (max-width: 56.25rem) {
   header {
     flex-wrap: wrap;
     height: auto;
-    min-height: 59px;
-    padding-top: 10px;
-    padding-bottom: 10px;
-    gap: 8px;
+    min-height: 3.6875rem;
+    padding-top: 0.625rem;
+    padding-bottom: 0.625rem;
+    gap: 0.5rem;
   }
   .header-actions {
     display: contents;
@@ -621,36 +626,36 @@ textarea::placeholder {
     justify-content: flex-end;
   }
   .header-actions > button {
-    padding: 6px;
+    padding: 0.375rem;
   }
 }
 
 .file-row {
   display: flex;
   align-items: center;
-  border-radius: 5px;
-  margin: 2px 0;
+  border-radius: 0.3125rem;
+  margin: 0.125rem 0;
 }
 .files .file-open {
   flex: 1;
   min-width: 0;
   margin: 0;
-  padding-right: 4px;
+  padding-right: 0.25rem;
 }
 .file-actions {
   display: flex;
   flex-shrink: 0;
   opacity: 0;
-  padding-right: 4px;
+  padding-right: 0.25rem;
 }
 .file-row:hover .file-actions,
 .file-row:focus-within .file-actions {
   opacity: 1;
 }
 .files .file-actions > button {
-  width: 26px;
-  height: 30px;
-  padding: 5px;
+  width: 1.625rem;
+  height: 1.875rem;
+  padding: 0.3125rem;
   margin: 0;
 }
 .sidebar-controls {
@@ -658,16 +663,16 @@ textarea::placeholder {
   flex-shrink: 0;
   display: flex;
   justify-content: flex-start;
-  gap: 4px;
+  gap: 0.25rem;
   align-items: center;
-  padding: 12px 0;
+  padding: 0.75rem 0;
   color: var(--muted);
-  font-size: 12px;
+  font-size: 0.75rem;
 }
 .sidebar-controls button {
-  gap: 6px;
-  min-height: 32px;
-  padding: 7px;
+  gap: 0.375rem;
+  min-height: 2rem;
+  padding: 0.4375rem;
 }
 .brand,
 .search {
@@ -683,17 +688,17 @@ textarea::placeholder {
   position: fixed;
   inset: auto;
   margin: 0;
-  width: 160px;
-  padding: 5px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
+  width: 10rem;
+  padding: 0.3125rem;
+  border: 0.0625rem solid var(--line);
+  border-radius: 0.5rem;
   background: var(--overlay);
   color: var(--text);
-  box-shadow: 0 6px 24px #0002;
+  box-shadow: 0 0.375rem 1.5rem #0002;
 }
 .files .file-menu button {
   margin: 0;
-  padding: 9px 10px;
+  padding: 0.5625rem 0.625rem;
   font-weight: 400;
 }
 .files .file-menu .danger svg {
@@ -705,38 +710,38 @@ textarea::placeholder {
 
 .action-error {
   position: fixed;
-  bottom: 20px;
+  bottom: 1.25rem;
   left: 50%;
   transform: translateX(-50%);
-  max-width: calc(100vw - 32px);
-  padding: 12px 16px;
+  max-width: calc(100vw - 2rem);
+  padding: 0.75rem 1rem;
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 0.75rem;
   background: var(--overlay);
   color: var(--error);
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  font-size: 12px;
+  border: 0.0625rem solid var(--line);
+  border-radius: 0.5rem;
+  font-size: 0.75rem;
   z-index: 30;
 }
 
 .workspace-bar {
   display: flex;
   align-items: center;
-  gap: 2px;
-  padding: 4px 0;
+  gap: 0.125rem;
+  padding: 0.25rem 0;
   color: var(--muted);
 }
 .workspace-bar button {
-  padding: 6px;
+  padding: 0.375rem;
   flex-shrink: 0;
 }
 .workspace-bar .workspace-name {
   flex: 1;
   min-width: 0;
   justify-content: flex-start;
-  font-size: 12px;
+  font-size: 0.75rem;
 }
 .workspace-name span {
   overflow: hidden;
@@ -745,16 +750,16 @@ textarea::placeholder {
 }
 .files .folder-row {
   margin: 0;
-  padding-block: 9px;
-  gap: 5px;
+  padding-block: 0.5625rem;
+  gap: 0.3125rem;
 }
 .selected-folder {
   color: var(--accent);
 }
 .folder-empty {
-  margin: 4px 0 10px;
+  margin: 0.25rem 0 0.625rem;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 0.6875rem;
 }
 .workspace-empty {
   min-height: 65vh;
@@ -762,30 +767,30 @@ textarea::placeholder {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 16px;
+  gap: 1rem;
   text-align: center;
   color: var(--muted);
 }
 .workspace-empty h1 {
   color: var(--text);
-  font-size: 22px;
+  font-size: 1.375rem;
   margin: 0;
 }
 .workspace-empty p {
-  max-width: 380px;
-  font-size: 14px;
+  max-width: 23.75rem;
+  font-size: 0.875rem;
   line-height: 1.7;
   margin: 0;
 }
 .workspace-warnings {
-  font-size: 11px;
+  font-size: 0.6875rem;
   color: var(--muted);
-  max-height: 120px;
+  max-height: 7.5rem;
   overflow: auto;
-  padding: 8px;
+  padding: 0.5rem;
 }
 .modal-location {
-  font-size: 12px;
+  font-size: 0.75rem;
   color: var(--muted);
   overflow-wrap: anywhere;
 }
@@ -795,11 +800,11 @@ textarea::placeholder {
 }
 .action-error button {
   flex-shrink: 0;
-  padding: 5px;
+  padding: 0.3125rem;
   text-decoration: underline;
 }
 .action-error span {
-  flex: 1 1 240px;
+  flex: 1 1 15rem;
 }
 .files {
   overflow-x: auto;
@@ -820,19 +825,19 @@ textarea::placeholder {
 .mac-window.no-sidebar header {
   padding-left: 90px;
 }
-@media (max-width: 900px) {
+@container app-layout (max-width: 56.25rem) {
   .mac-window .brand {
-    font-size: 18px;
+    font-size: 1.125rem;
   }
   .mac-window .brand-icon {
-    width: 24px;
-    height: 24px;
+    width: 1.5rem;
+    height: 1.5rem;
   }
   .mac-window header {
     height: auto;
   }
 }
-@media (max-width: 600px) {
+@container app-layout (max-width: 37.5rem) {
   .mac-window header {
     padding-left: 90px;
   }
@@ -856,15 +861,15 @@ header {
 }
 
 .settings-dialog {
-  width: min(480px, calc(100vw - 40px));
-  max-height: calc(100dvh - 64px);
+  width: min(30rem, calc(100vw - 2.5rem));
+  max-height: calc(100dvh - 4rem);
   overflow-y: auto;
-  padding: 28px;
-  border: 1px solid var(--line);
-  border-radius: 14px;
+  padding: 1.75rem;
+  border: 0.0625rem solid var(--line);
+  border-radius: 0.875rem;
   background: var(--paper);
   color: var(--text);
-  box-shadow: 0 20px 70px #0004;
+  box-shadow: 0 1.25rem 4.375rem #0004;
 }
 .settings-dialog::backdrop {
   background: #0005;
@@ -873,49 +878,49 @@ header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 28px;
+  margin-bottom: 1.75rem;
 }
 .settings-heading button {
-  width: 32px;
-  height: 32px;
+  width: 2rem;
+  height: 2rem;
 }
 .settings-dialog fieldset:last-child {
   margin-bottom: 0;
 }
 .settings-dialog h1 {
   margin: 0;
-  font-size: 22px;
+  font-size: 1.375rem;
   font-weight: 600;
 }
 .settings-dialog fieldset {
   border: 0;
   padding: 0;
-  margin: 0 0 32px;
-  max-width: 560px;
+  margin: 0 0 2rem;
+  max-width: 35rem;
 }
 .settings-dialog legend {
   padding: 0;
   font-weight: 600;
-  font-size: 15px;
+  font-size: 0.9375rem;
 }
 .settings-dialog p {
   color: var(--muted);
-  font-size: 13px;
-  margin: 8px 0 18px;
+  font-size: 0.8125rem;
+  margin: 0.5rem 0 1.125rem;
 }
 .theme-choices {
   display: grid;
-  gap: 10px;
+  gap: 0.625rem;
 }
 .theme-choice {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 16px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
+  gap: 0.625rem;
+  padding: 1rem;
+  border: 0.0625rem solid var(--line);
+  border-radius: 0.5rem;
   cursor: pointer;
-  font-size: 14px;
+  font-size: 0.875rem;
 }
 .theme-choice:has(input:checked) {
   border-color: var(--accent);
@@ -927,11 +932,11 @@ header {
 .theme-swatch {
   display: flex;
   margin-left: auto;
-  gap: 4px;
+  gap: 0.25rem;
 }
 .theme-swatch i {
-  width: 18px;
-  height: 18px;
+  width: 1.125rem;
+  height: 1.125rem;
   border-radius: 50%;
   background: #e5edf2;
 }
@@ -952,53 +957,53 @@ header {
 }
 .appearance-choices {
   display: flex;
-  gap: 24px;
-  margin-top: 16px;
+  gap: 1.5rem;
+  margin-top: 1rem;
 }
 .appearance-choices label {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-size: 14px;
+  gap: 0.5rem;
+  font-size: 0.875rem;
   cursor: pointer;
 }
 
-/* An explicit writing preference takes precedence over viewport defaults. */
+/* One root scale keeps typography, spacing, and controls proportional. */
 .writing {
-  font-size: var(--editor-font-size, 15px);
+  font-size: 0.9375rem;
 }
-.font-size-setting {
+.app-zoom-setting {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
-  margin-top: 16px;
-  font-size: 14px;
+  gap: 1rem;
+  margin-top: 1rem;
+  font-size: 0.875rem;
 }
-.font-size-setting output {
+.app-zoom-setting output {
   font-variant-numeric: tabular-nums;
   color: var(--muted);
 }
-.font-size-slider {
+.app-zoom-slider {
   display: block;
   width: 100%;
-  height: 24px;
-  margin: 12px 0 0;
+  height: 1.5rem;
+  margin: 0.75rem 0 0;
   cursor: pointer;
 }
-.font-size-range {
+.app-zoom-range {
   display: flex;
   justify-content: space-between;
   color: var(--muted);
-  font-size: 12px;
+  font-size: 0.75rem;
 }
 
 .sidebar-resizer {
   position: absolute;
-  top: 64px;
+  top: 4rem;
   bottom: 0;
-  right: -4px;
-  width: 8px;
+  right: -0.25rem;
+  width: 0.5rem;
   cursor: col-resize;
   touch-action: none;
   z-index: 10;
@@ -1009,8 +1014,8 @@ header {
   background: var(--line);
 }
 .sidebar-resizer:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: -2px;
+  outline: 0.125rem solid var(--accent);
+  outline-offset: -0.125rem;
 }
 .resizing-sidebar {
   cursor: col-resize;
@@ -1019,21 +1024,21 @@ header {
 .no-sidebar .sidebar-resizer {
   display: none;
 }
-@media (max-width: 600px), print {
+@container app-layout (max-width: 37.5rem) {
   .sidebar-resizer {
     display: none;
   }
 }
 
 .workspace-bar {
-  gap: 4px;
+  gap: 0.25rem;
 }
 .workspace-bar > button {
-  min-height: 32px;
+  min-height: 2rem;
 }
 .workspace-bar .workspace-name {
   font-weight: 600;
-  gap: 7px;
+  gap: 0.4375rem;
 }
 .workspace-name svg {
   flex-shrink: 0;
@@ -1043,49 +1048,50 @@ header {
   text-align: left;
 }
 .workspace-bar + .search {
-  margin-top: 10px;
+  margin-top: 0.625rem;
 }
 .files .folder-row {
   display: flex;
   align-items: center;
   padding-block: 0;
   gap: 0;
-  border-radius: 5px;
+  border-radius: 0.3125rem;
 }
 .files .folder-row button {
   margin: 0;
-  min-height: 34px;
+  min-height: 2.125rem;
 }
 .files .folder-disclosure {
-  width: 26px;
+  width: 1.625rem;
   flex-shrink: 0;
-  padding: 6px;
+  padding: 0.375rem;
   justify-content: center;
 }
 .files .folder-select {
   flex: 1;
   min-width: 0;
-  padding: 6px 4px;
-  gap: 8px;
+  padding: 0.375rem 0.25rem;
+  gap: 0.5rem;
 }
 
 /* iOS keeps writing above the keyboard and clear of the camera and home indicator. */
 .ios-window {
+  --touch-target: max(2.75rem, 44px);
   position: relative;
   -webkit-tap-highlight-color: transparent;
 }
 .ios-window .sidebar {
   padding-top: env(safe-area-inset-top);
   padding-bottom: env(safe-area-inset-bottom);
-  padding-left: max(15px, env(safe-area-inset-left));
+  padding-left: max(0.9375rem, env(safe-area-inset-left));
 }
 .ios-window header {
   height: auto;
-  min-height: calc(56px + env(safe-area-inset-top));
-  padding-top: calc(8px + env(safe-area-inset-top));
-  padding-bottom: 8px;
-  padding-left: max(12px, env(safe-area-inset-left));
-  padding-right: max(12px, env(safe-area-inset-right));
+  min-height: calc(3.5rem + env(safe-area-inset-top));
+  padding-top: calc(0.5rem + env(safe-area-inset-top));
+  padding-bottom: 0.5rem;
+  padding-left: max(0.75rem, env(safe-area-inset-left));
+  padding-right: max(0.75rem, env(safe-area-inset-right));
 }
 .ios-window .breadcrumbs {
   overflow: hidden;
@@ -1095,22 +1101,22 @@ header {
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--text);
-  font-size: 14px;
+  font-size: 0.875rem;
   font-weight: 550;
 }
 .ios-window button {
-  min-width: 44px;
-  min-height: 44px;
+  min-width: var(--touch-target);
+  min-height: var(--touch-target);
 }
 .ios-window .file-actions {
   opacity: 1;
 }
 .ios-window .files .file-actions > button {
-  width: 44px;
-  height: 44px;
+  width: var(--touch-target);
+  height: var(--touch-target);
 }
 .ios-window .files .folder-row button {
-  min-height: 44px;
+  min-height: var(--touch-target);
 }
 .ios-window .file-menu button {
   width: 100%;
@@ -1126,34 +1132,36 @@ header {
 }
 .ios-window .search input,
 .ios-window .modal input {
-  font-size: 16px;
+  font-size: 1rem;
 }
 .ios-window .page-scroll {
-  padding: 28px max(20px, env(safe-area-inset-right))
-    max(40px, env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left));
+  padding: 1.75rem max(1.25rem, env(safe-area-inset-right))
+    max(2.5rem, env(safe-area-inset-bottom))
+    max(1.25rem, env(safe-area-inset-left));
 }
 .ios-window.focus-mode .page-scroll {
   padding-block: 0;
 }
 .ios-window .source {
-  height: calc(var(--app-height, 100dvh) - 190px);
-  min-height: 200px;
+  height: calc(var(--app-height, 100dvh) - 11.875rem);
+  min-height: 12.5rem;
 }
 .ios-window .action-error {
-  bottom: max(12px, env(safe-area-inset-bottom));
+  bottom: max(0.75rem, env(safe-area-inset-bottom));
 }
 .ios-window > .action-error {
   position: absolute;
 }
 .ios-window .file-dialog,
 .ios-window .settings-dialog {
-  top: max(12px, env(safe-area-inset-top));
+  top: max(0.75rem, env(safe-area-inset-top));
   bottom: calc(
-    100dvh - var(--app-height, 100dvh) + max(12px, env(safe-area-inset-bottom))
+    100dvh - var(--app-height, 100dvh) +
+      max(0.75rem, env(safe-area-inset-bottom))
   );
   max-height: calc(
     var(--app-height, 100dvh) - env(safe-area-inset-top) -
-      env(safe-area-inset-bottom) - 24px
+      env(safe-area-inset-bottom) - 1.5rem
   );
   overflow-y: auto;
 }
@@ -1161,22 +1169,22 @@ header {
   position: static;
   transform: none;
   max-width: 100%;
-  margin-top: 12px;
+  margin-top: 0.75rem;
 }
 .ios-window .brand {
-  font-size: 20px;
+  font-size: 1.25rem;
 }
 .mobile-sidebar-close {
   display: none;
   margin-left: auto;
 }
-@media (max-width: 900px) {
+@container app-layout (max-width: 56.25rem) {
   .ios-window .sidebar {
     position: absolute;
     inset: 0 auto 0 0;
-    width: min(340px, 88vw);
+    width: min(21.25rem, 88vw);
     z-index: 12;
-    padding-right: 15px;
+    padding-right: 0.9375rem;
   }
   .ios-window.no-sidebar .sidebar {
     display: none;
@@ -1201,5 +1209,123 @@ header {
   }
   .ios-window .editor-controls {
     width: 100%;
+  }
+}
+
+/* Native titlebar controls stay in OS points while their surrounding UI scales. */
+.mac-window .sidebar-resizer {
+  top: 64px;
+}
+.ios-window .sidebar-resizer {
+  top: calc(4rem + env(safe-area-inset-top));
+}
+.ios-window .writing,
+.ios-window .source {
+  font-size: 1rem;
+}
+.app-zoom-range {
+  align-items: center;
+}
+.app-zoom-range button {
+  font-size: inherit;
+  padding: 0.375rem;
+  text-decoration: underline;
+}
+.settings-dialog input[type="radio"] {
+  width: 1rem;
+  height: 1rem;
+  flex-shrink: 0;
+}
+.ios-window .appearance-choices label {
+  min-height: var(--touch-target);
+}
+.app-zoom-slider {
+  appearance: none;
+  background: transparent;
+}
+.app-zoom-slider::-webkit-slider-runnable-track {
+  height: 0.25rem;
+  border-radius: 1rem;
+  background: var(--line);
+}
+.app-zoom-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 1rem;
+  height: 1rem;
+  margin-top: -0.375rem;
+  border-radius: 50%;
+  background: var(--accent);
+}
+.app-zoom-slider::-moz-range-track {
+  height: 0.25rem;
+  border-radius: 1rem;
+  background: var(--line);
+}
+.app-zoom-slider::-moz-range-thumb {
+  width: 1rem;
+  height: 1rem;
+  border: 0;
+  border-radius: 50%;
+  background: var(--accent);
+}
+.ios-window .app-zoom-slider {
+  height: var(--touch-target);
+}
+@media print {
+  :root {
+    --app-zoom: 1 !important;
+  }
+}
+svg.lucide[width="13"] {
+  width: 0.8125rem;
+  height: 0.8125rem;
+}
+svg.lucide[width="14"] {
+  width: 0.875rem;
+  height: 0.875rem;
+}
+svg.lucide[width="15"] {
+  width: 0.9375rem;
+  height: 0.9375rem;
+}
+svg.lucide[width="16"] {
+  width: 1rem;
+  height: 1rem;
+}
+svg.lucide[width="17"] {
+  width: 1.0625rem;
+  height: 1.0625rem;
+}
+svg.lucide[width="18"] {
+  width: 1.125rem;
+  height: 1.125rem;
+}
+svg.lucide[width="20"] {
+  width: 1.25rem;
+  height: 1.25rem;
+}
+svg.lucide[width="32"] {
+  width: 2rem;
+  height: 2rem;
+}
+
+.ios-window .page-scroll:has(> .source) {
+  display: flex;
+  flex-direction: column;
+}
+.ios-window .source {
+  flex: 1;
+  height: auto;
+  min-height: 0;
+}
+@container app-layout (max-height: 30rem) {
+  .ios-window .page-scroll {
+    padding: 1rem;
+  }
+}
+
+@media print {
+  #root {
+    container-type: normal;
   }
 }

@@ -354,35 +354,81 @@ test("settings switches and remembers both theme palettes without losing the doc
   ).toBeFocused();
 });
 
-test("writing size defaults to 15 and remembers choices from 12 through 20", async ({
+test("app zoom scales the whole interface and remembers the preference", async ({
   page,
 }) => {
   await openWorkspace(page);
   await page.getByRole("button", { name: "Settings", exact: true }).click();
-  const size = page.getByLabel("Default font size");
-  await expect(size).toHaveValue("15");
-  await expect(size).toHaveAttribute("min", "12");
-  await expect(size).toHaveAttribute("max", "20");
-  await size.focus();
-  await size.press("Home");
-  await expect(page.getByLabel("Markdown editor")).toHaveCSS(
-    "font-size",
-    "12px",
-  );
-  await size.press("End");
+  const zoom = page.getByLabel("App zoom", { exact: true });
+  const icon = page.getByLabel("Close settings").locator("svg");
+  const baseline = (await icon.boundingBox())!.width;
+  await expect(zoom).toHaveValue("100");
+  await expect(zoom).toHaveAttribute("min", "75");
+  await expect(zoom).toHaveAttribute("max", "150");
+  await zoom.focus();
+  await zoom.press("End");
+  await expect(zoom).toHaveAttribute("aria-valuetext", "150%");
+  await expect(page.locator("html")).toHaveCSS("font-size", "24px");
+  expect((await icon.boundingBox())!.width).toBeCloseTo(baseline * 1.5, 0);
   await page.getByLabel("Close settings").click();
   await expect(page.getByLabel("Markdown editor")).toHaveCSS(
     "font-size",
-    "20px",
+    "22.5px",
   );
+  await page.getByLabel("Toggle sidebar").click();
+  await page.getByLabel("Toggle sidebar").click();
+  await expect(
+    page.getByRole("button", { name: "Welcome.md", exact: true }),
+  ).toHaveCSS("font-size", "18px");
+  await page.getByLabel("Options for Welcome.md").click();
+  await expect(page.getByLabel("Rename Welcome.md")).toHaveCSS(
+    "font-size",
+    "18px",
+  );
+  await page.keyboard.press("Escape");
   await page.reload();
-  await expect(page.getByLabel("Markdown editor")).toHaveCSS(
-    "font-size",
-    "20px",
-  );
-  await page.getByLabel("Toggle source mode").click();
-  await expect(page.getByLabel("Markdown source")).toHaveCSS(
-    "font-size",
-    "20px",
-  );
+  await expect(page.locator("html")).toHaveCSS("font-size", "24px");
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await expect(zoom).toHaveValue("150");
+  await page.getByRole("button", { name: "Reset to 100%" }).click();
+  await expect(page.locator("html")).toHaveCSS("font-size", "16px");
+  await zoom.focus();
+  await zoom.press("Home");
+  await expect(page.locator("html")).toHaveCSS("font-size", "12px");
+});
+
+test("legacy writing sizes migrate once without removing the old preference", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.evaluate(() => {
+    localStorage.removeItem("kronos.appZoom");
+    localStorage.setItem("kronos.fontSize", "20");
+  });
+  await page.reload();
+  await expect(page.locator("html")).toHaveCSS("font-size", "21.6px");
+  expect(
+    await page.evaluate(() => localStorage.getItem("kronos.fontSize")),
+  ).toBe("20");
+  await page.evaluate(() => localStorage.setItem("kronos.appZoom", "110"));
+  await page.reload();
+  await expect(page.locator("html")).toHaveCSS("font-size", "17.6px");
+});
+
+test("dragging the zoom slider keeps its track stable until release", async ({
+  page,
+}) => {
+  await openWorkspace(page);
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  const zoom = page.getByLabel("App zoom", { exact: true });
+  const box = (await zoom.boundingBox())!;
+  await page.mouse.move(box.x + box.width / 3, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width - 1, box.y + box.height / 2, {
+    steps: 5,
+  });
+  await expect(zoom).toHaveValue("150");
+  await expect(page.locator("html")).toHaveCSS("font-size", "16px");
+  await page.mouse.up();
+  await expect(page.locator("html")).toHaveCSS("font-size", "24px");
 });

@@ -1,3 +1,4 @@
+mod apple;
 mod recovery;
 mod workspace;
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
@@ -21,6 +22,8 @@ use workspace::{Listing, Snapshot};
 struct WorkspaceState {
     root: Mutex<Option<PathBuf>>,
     watcher: Mutex<Option<RecommendedWatcher>>,
+    #[cfg(any(target_os = "macos", target_os = "ios"))]
+    presenter: Mutex<Option<apple::Presenter>>,
     frontend_ready: AtomicBool,
     allow_exit: AtomicBool,
 }
@@ -73,6 +76,14 @@ fn activate(app: &tauri::AppHandle, path: PathBuf) -> Result<Listing, String> {
     #[cfg(target_os = "ios")]
     app.state::<IosWorkspace<tauri::Wry>>().commit(&path)?;
     let state = app.state::<WorkspaceState>();
+    #[cfg(any(target_os = "macos", target_os = "ios"))]
+    {
+        let handle = app.clone();
+        *state.presenter.lock().map_err(|e| e.to_string())? =
+            Some(apple::Presenter::new(&path, move || {
+                let _ = handle.emit("workspace-changed", ());
+            })?);
+    }
     *state.root.lock().map_err(|e| e.to_string())? = Some(path);
     *state.watcher.lock().map_err(|e| e.to_string())? = watched.ok().map(|_| watcher);
     Ok(listing)
@@ -224,18 +235,24 @@ async fn delete_document(
     path: String,
     version: String,
 ) -> Result<(), String> {
-    #[cfg(target_os = "ios")]
-    {
-        let handle = app.clone();
-        return run(app, root, move |r| {
-            workspace::delete_with(r, &path, &version, |path| {
-                handle.state::<IosWorkspace<tauri::Wry>>().trash(path)
-            })
-        })
-        .await;
-    }
-    #[cfg(not(target_os = "ios"))]
     run(app, root, move |r| workspace::delete(r, &path, &version)).await
+}
+
+#[tauri::command]
+async fn document_cloud_status(
+    app: tauri::AppHandle,
+    root: String,
+    path: String,
+) -> Result<Option<apple::Cloud>, String> {
+    run(app, root, move |r| workspace::cloud_status(r, &path)).await
+}
+#[tauri::command]
+async fn keep_document_versions(
+    app: tauri::AppHandle,
+    root: String,
+    path: String,
+) -> Result<(), String> {
+    run(app, root, move |r| workspace::keep_cloud_versions(r, &path)).await
 }
 
 #[tauri::command]
@@ -278,7 +295,7 @@ async fn store_recovery_draft(
     markdown: String,
     version: String,
 ) -> Result<(), String> {
-    #[cfg(target_os = "ios")]
+    #[cfg(any(target_os = "ios", target_os = "macos"))]
     {
         let directory = app.path().app_data_dir().map_err(|e| e.to_string())?;
         let draft = recovery::RecoveryDraft {
@@ -288,11 +305,12 @@ async fn store_recovery_draft(
                 name,
                 markdown,
                 version,
+                cloud: None,
             },
         };
         run(app, root, move |_| recovery::store(&directory, &draft)).await
     }
-    #[cfg(not(target_os = "ios"))]
+    #[cfg(not(any(target_os = "ios", target_os = "macos")))]
     {
         let _ = (app, root, path, name, markdown, version);
         Ok(())
@@ -303,13 +321,13 @@ async fn store_recovery_draft(
 async fn load_recovery_draft(
     app: tauri::AppHandle,
 ) -> Result<Option<recovery::RecoveryDraft>, String> {
-    #[cfg(target_os = "ios")]
+    #[cfg(any(target_os = "ios", target_os = "macos"))]
     return tauri::async_runtime::spawn_blocking(move || {
         recovery::load(&app.path().app_data_dir().map_err(|e| e.to_string())?)
     })
     .await
     .map_err(|e| e.to_string())?;
-    #[cfg(not(target_os = "ios"))]
+    #[cfg(not(any(target_os = "ios", target_os = "macos")))]
     {
         let _ = app;
         Ok(None)
@@ -318,13 +336,13 @@ async fn load_recovery_draft(
 
 #[tauri::command]
 async fn clear_recovery_draft(app: tauri::AppHandle) -> Result<(), String> {
-    #[cfg(target_os = "ios")]
+    #[cfg(any(target_os = "ios", target_os = "macos"))]
     return tauri::async_runtime::spawn_blocking(move || {
         recovery::clear(&app.path().app_data_dir().map_err(|e| e.to_string())?)
     })
     .await
     .map_err(|e| e.to_string())?;
-    #[cfg(not(target_os = "ios"))]
+    #[cfg(not(any(target_os = "ios", target_os = "macos")))]
     {
         let _ = app;
         Ok(())
@@ -364,7 +382,9 @@ pub fn run_app() {
             set_mobile_appearance,
             store_recovery_draft,
             load_recovery_draft,
-            clear_recovery_draft
+            clear_recovery_draft,
+            document_cloud_status,
+            keep_document_versions
         ])
         .build(tauri::generate_context!())
         .expect("error while building Anubis")

@@ -46,6 +46,7 @@ name = "anubis"
 version = "0.1.0"
 dependencies = [
  "blake3",
+ "cc",
  "notify",
  "rustix",
  "serde",

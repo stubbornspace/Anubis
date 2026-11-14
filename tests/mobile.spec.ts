@@ -21,6 +21,46 @@ async function openMobileWorkspace(page: Page) {
   await expect(page.locator(".writing h1")).toHaveText("Welcome");
 }
 
+test("app zoom is saved per device and preserves editor and settings interaction", async ({
+  page,
+}) => {
+  await openMobileWorkspace(page);
+  await showFiles(page);
+  await page.getByRole("button", { name: "Settings", exact: true }).tap();
+  const zoom = page.getByLabel("App zoom", { exact: true });
+  await expect(zoom).toHaveValue("100");
+  await zoom.focus();
+  await zoom.press("End");
+  await expect(page.locator("html")).toHaveCSS("font-size", "24px");
+  await expect(zoom).toHaveAttribute("aria-valuetext", "150%");
+  await page.getByLabel("Close settings").tap();
+  if (await page.getByLabel("Close files").isVisible())
+    await page.getByLabel("Close files").tap();
+  await page.getByLabel("Markdown editor").tap();
+  await page.getByLabel("Markdown editor").fill("Still editable with app zoom");
+  await expect(page.getByRole("status")).toHaveText("Saved");
+  await page.reload();
+  await expect(page.locator("html")).toHaveCSS("font-size", "24px");
+  await expect(page.getByLabel("Markdown editor")).toHaveText(
+    "Still editable with app zoom",
+  );
+});
+
+test("legacy iOS writing size migrates to app zoom using the iOS default", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.evaluate(() => {
+    localStorage.removeItem("kronos.appZoom");
+    localStorage.setItem("kronos.fontSize", "20");
+  });
+  await page.reload();
+  await expect(page.locator("html")).toHaveCSS("font-size", "20px");
+  expect(
+    await page.evaluate(() => localStorage.getItem("kronos.fontSize")),
+  ).toBe("20");
+});
+
 test("touch navigation saves before switching and leaves room to write", async ({
   page,
 }) => {

@@ -164,17 +164,6 @@ final class WorkspacePlugin: Plugin, UIDocumentPickerDelegate {
         }
     }
 
-    @objc func trashFile(_ invoke: Invoke) throws {
-        let args = try invoke.parseArgs(PathArgs.self)
-        // The Rust command validates the selected root, path, and version before calling this.
-        do {
-            try FileManager.default.trashItem(at: URL(fileURLWithPath: args.path), resultingItemURL: nil)
-            invoke.resolve()
-        } catch {
-            invoke.reject("Could not move the document to Recently Deleted: \(error.localizedDescription)")
-        }
-    }
-
     private func endBackgroundTask() {
         guard backgroundTask != .invalid else { return }
         UIApplication.shared.endBackgroundTask(backgroundTask)

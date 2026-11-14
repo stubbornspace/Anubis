@@ -37,10 +37,6 @@ impl<R: Runtime> IosWorkspace<R> {
         let _ = self.call("cancelFolder", serde_json::json!({}));
     }
 
-    pub fn trash(&self, path: &Path) -> Result<(), String> {
-        self.call("trashFile", serde_json::json!({ "path": path }))
-    }
-
     pub fn finish_background_save(&self) -> Result<(), String> {
         self.call("finishBackgroundSave", serde_json::json!({}))
     }

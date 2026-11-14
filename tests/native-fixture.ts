@@ -34,6 +34,7 @@ export const test = base.extend({
           name: path.split("/").pop(),
           markdown: data.files[path],
           version: data.files[path],
+          cloud: data.cloud?.[path] || null,
         };
       };
       const listing = () => {
@@ -57,6 +58,7 @@ export const test = base.extend({
                 name: p.split("/").pop(),
                 directory: false,
                 children: [],
+                cloud: data.cloud?.[p] || null,
               })),
           ];
         };
@@ -89,7 +91,9 @@ export const test = base.extend({
       };
       w.__TAURI_EVENT_PLUGIN_INTERNALS__ = { unregisterListener: () => {} };
       w.__TAURI_INTERNALS__ = {
-        metadata: { currentWindow: { label: "main" } },
+        metadata: {
+          currentWindow: { label: "main" },
+        },
         transformCallback: (callback: (value: any) => void) => {
           callbacks.set(++id, callback);
           return id;
@@ -146,13 +150,46 @@ export const test = base.extend({
               delete data.recovery;
               store(data);
               return;
+            case "document_cloud_status":
+              return data.cloud?.[args.path] || null;
+            case "keep_document_versions": {
+              if (w.__nativeTest.failKeep)
+                throw new Error("Cloud versions are unavailable offline");
+              const versions = data.conflictVersions?.[args.path] || [];
+              versions.forEach((text: string, i: number) => {
+                const name = args.path.replace(
+                  /(\.[^.]+)$/,
+                  ` (conflict ${i + 1})$1`,
+                );
+                if (name in data.files) throw new Error("Conflict copy exists");
+                data.files[name] = text;
+              });
+              data.cloud[args.path].conflicts = 0;
+              data.conflictVersions = {};
+              store(data);
+              return;
+            }
             case "read_document":
+              if (w.__nativeTest.failRead === args.path)
+                throw new Error(
+                  "Download unavailable offline. Try again when connected.",
+                );
+              if (w.__nativeTest.delayRead === args.path)
+                await new Promise((resolve) => setTimeout(resolve, 1000));
+              if (data.cloud?.[args.path]) {
+                data.cloud[args.path].downloaded = true;
+                store(data);
+              }
               return snapshot(args.path);
             case "save_document":
+              if (data.cloud?.[args.path]?.conflicts)
+                throw new Error("iCloud has competing versions of this file.");
               if (w.__nativeTest.failSave) throw new Error("File is read-only");
               if (snapshot(args.path).version !== args.version)
                 throw new Error("This file changed outside Anubis.");
               data.files[args.path] = args.markdown;
+              if (data.cloud?.[args.path])
+                data.cloud[args.path].uploaded = false;
               store(data);
               return snapshot(args.path);
             case "create_document": {

@@ -13,10 +13,11 @@ Anubis is a desktop and iOS Markdown and plain-text editor built with React, Typ
 - `src-tauri/tauri.conf.json`: app identity, window configuration, and bundles.
 - `public/icons/anubis-app.png`: source app icon; `anubis-light.png` and `anubis-dark.png`: themed sidebar logos.
 - `tests/native-fixture.ts`: mocked Tauri boundary for Playwright tests.
-- `src-tauri/plugins/ios-workspace/`: native iOS folder bookmarks, security-scoped access, Trash, and background save coordination.
+- `src-tauri/plugins/ios-workspace/`: native iOS folder bookmarks, security-scoped access, and background save coordination.
 - `src-tauri/gen/apple/project.yml`: iPhone/iPad Xcode project and native UI test definition; regenerate with `xcodegen generate --spec src-tauri/gen/apple/project.yml`.
 - `src/platform.ts` and `tests/mobile.spec.ts`: iOS UI detection and touch/keyboard regression tests.
-- `src-tauri/src/recovery.rs`: private iOS draft journal; retain it until a successful save/copy or an explicitly confirmed discard.
+- `src-tauri/src/apple.rs` and `src-tauri/apple/FileAccess.m`: shared Apple coordination, cloud metadata, version preservation, and file presenters.
+- `src-tauri/src/recovery.rs`: private Apple-platform draft journal; retain it until a successful save/copy or an explicitly confirmed discard.
 
 Read `README.md` for supported formats, limits, and known behavior. The `analysis/` folder contains historical research, not runtime dependencies.
 
@@ -24,7 +25,7 @@ Read `README.md` for supported formats, limits, and known behavior. The `analysi
 
 Keep the writing interface minimal. Use system fonts and existing Lucide icons. Give icon-only buttons descriptive accessible names and hover labels. Preserve keyboard focus, Escape dismissal, and reduced-motion support.
 
-Use theme tokens rather than adding isolated colors. Check both themes and appearances when changing styles. Settings live in a dialog. The sidebar is resizable and remembers its width; keep the native macOS controls aligned with the header.
+Use rem units for scalable interface dimensions and app-layout container queries for responsive breakpoints. Preserve physical macOS window-control spacing and the iOS minimum touch target when changing App zoom. Use theme tokens rather than adding isolated colors. Check both themes and appearances when changing styles. Settings live in a dialog. The sidebar is resizable and remembers its width; keep the native macOS controls aligned with the header.
 
 Focus mode positions the typing line about 40% down the editor and fades surrounding controls while typing, restoring them after two seconds idle or user interaction. Preserve editor geometry while fading.
 
@@ -65,3 +66,5 @@ Rust build output can occupy several gigabytes. `cargo clean --manifest-path src
 Keep build output, dependencies, local research captures, credentials, and test artifacts out of Git. Commit both dependency lockfiles when dependencies change. Do not delete user files or unrelated working-tree changes.
 
 On iOS, keep security-scoped access alive until the selected folder is replaced successfully, and persist bookmarks rather than absolute sandbox paths. Use the native background save task and system Trash bridge. Never fall back to permanent deletion when a provider cannot trash a file. Keep signing teams, provisioning profiles, generated Externals, and build output out of Git.
+
+For iCloud Drive, keep coordinated access around validation and the entire filesystem operation. Preserve both cloud versions and unsaved text before resolving a conflict; never select a winner silently. Distinguish local persistence from confirmed upload. Keep directory/status inspection from downloading every document. iCloud tests require explicit opt-in and must use only their own temporary directories.

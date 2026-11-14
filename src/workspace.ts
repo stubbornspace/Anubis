@@ -4,17 +4,26 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { confirm } from "@tauri-apps/plugin-dialog";
 import { isIOS } from "./platform";
 
+export type Cloud = {
+  downloaded: boolean;
+  uploaded: boolean;
+  downloading: boolean;
+  conflicts: number;
+  error: string;
+};
 export type Entry = {
   path: string;
   name: string;
   directory: boolean;
   children: Entry[];
+  cloud?: Cloud | null;
 };
 export type Document = {
   path: string;
   name: string;
   markdown: string;
   version: string;
+  cloud?: Cloud | null;
 };
 export type Workspace = {
   root: string;
@@ -34,6 +43,7 @@ export type State = {
   revision: number;
   ready: boolean;
   recoveredFrom: string | null;
+  opening: string;
 };
 export const parentOf = (path: string) =>
   path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "";
@@ -58,6 +68,7 @@ export class WorkspaceController {
     revision: 0,
     ready: false,
     recoveredFrom: null,
+    opening: "",
   };
   private subscribers = new Set<() => void>();
   private queue: Promise<unknown> = Promise.resolve();
@@ -112,7 +123,7 @@ export class WorkspaceController {
   private async accept(workspace: Workspace) {
     this.set({ workspace, folder: "" });
     this.activate(null);
-    if (isIOS) {
+    {
       const recovery = await invoke<{
         root: string;
         document: Document;
@@ -131,14 +142,63 @@ export class WorkspaceController {
     const remembered = localStorage.getItem(`kronos.active:${workspace.root}`);
     const files = flatten(workspace.entries);
     const first = files.find((e) => e.path === remembered) || files[0];
-    if (first)
-      this.activate(
-        await invoke<Document>("read_document", {
-          root: workspace.root,
-          path: first.path,
-        }),
-      );
+    if (first) this.activate(await this.open(first.path));
   }
+  private async open(path: string) {
+    const entry = flatten(this.state.workspace?.entries || []).find(
+      (e) => e.path === path,
+    );
+    this.set({
+      opening: `${entry?.cloud && !entry.cloud.downloaded ? "Downloading" : "Opening"} ${entry?.name || path}…`,
+    });
+    try {
+      return await invoke<Document>("read_document", {
+        root: this.root(),
+        path,
+      });
+    } finally {
+      this.set({ opening: "" });
+    }
+  }
+  private async updateCloud() {
+    const doc = this.state.doc;
+    if (!doc) return;
+    const cloud = await invoke<Cloud | null>("document_cloud_status", {
+      root: this.root(),
+      path: doc.path,
+    });
+    if (this.state.doc?.path === doc.path)
+      this.set({ doc: { ...this.state.doc, cloud } });
+  }
+  cloudStatus = () => this.serial(() => this.updateCloud(), false);
+  keepBoth = () =>
+    this.serial(async () => {
+      const doc = this.state.doc;
+      if (!doc) return;
+      const root = this.root();
+      // Preserve typed text first. A failed native conflict operation must never
+      // strand or discard edits; the saved local copy remains open on failure.
+      if (this.state.dirty) {
+        const name = doc.name.replace(
+          /(\.[^.]+)$/,
+          ` (local edits ${crypto.randomUUID()})$1`,
+        );
+        const copy = await invoke<Document>("create_document", {
+          root,
+          parent: parentOf(doc.path),
+          name,
+          markdown: doc.markdown,
+        });
+        await invoke("clear_recovery_draft");
+        this.activate(copy);
+      }
+      await invoke("keep_document_versions", { root, path: doc.path });
+      this.set({
+        workspace: await invoke<Workspace>("list_workspace", { root }),
+      });
+      if (this.state.doc?.path === doc.path)
+        this.activate(await this.open(doc.path));
+    });
   initialize = () => {
     if (this.initializing) return this.initializing;
     this.initializing = (async () => {
@@ -172,10 +232,8 @@ export class WorkspaceController {
       const doc = this.state.doc;
       this.set({ saving: true });
       try {
-        // iOS may terminate a suspended app even when a save fails. Keep a durable
-        // draft before attempting the write, including edits to a recovered draft.
-        if (isIOS)
-          await invoke("store_recovery_draft", { root: this.root(), ...doc });
+        // Keep a durable native draft before attempting any document write.
+        await invoke("store_recovery_draft", { root: this.root(), ...doc });
         if (this.state.conflict)
           throw new Error(
             "Resolve the file conflict before leaving this document.",
@@ -187,7 +245,7 @@ export class WorkspaceController {
         savedAny = true;
         const current = this.state.doc!;
         this.set({
-          doc: { ...current, version: saved.version },
+          doc: { ...current, version: saved.version, cloud: saved.cloud },
           dirty: current.markdown !== doc.markdown,
           error: "",
         });
@@ -199,7 +257,7 @@ export class WorkspaceController {
         this.set({ saving: false });
       }
     }
-    if (isIOS && savedAny) await invoke("clear_recovery_draft");
+    if (savedAny) await invoke("clear_recovery_draft");
   }
   save = () => this.serial(() => this.flush(), false);
   choose = () =>
@@ -215,9 +273,7 @@ export class WorkspaceController {
         return;
       }
       await this.flush();
-      this.activate(
-        await invoke<Document>("read_document", { root: this.root(), path }),
-      );
+      this.activate(await this.open(path));
     });
   selectFolder = (folder: string) => this.set({ folder });
   refresh = () =>
@@ -228,6 +284,8 @@ export class WorkspaceController {
       this.set({ workspace });
       const doc = this.state.doc;
       if (!doc) return;
+      if (flatten(workspace.entries).some((e) => e.path === doc.path))
+        await this.updateCloud();
       // Never replace unsaved editor text with watcher events (including our own writes).
       if (this.state.dirty || this.state.conflict) return;
       if (!flatten(workspace.entries).some((e) => e.path === doc.path)) {
@@ -242,7 +300,11 @@ export class WorkspaceController {
         root,
         path: doc.path,
       });
-      if (!this.state.dirty && disk.version !== this.state.doc?.version)
+      if (
+        !this.state.dirty &&
+        (disk.version !== this.state.doc?.version ||
+          this.state.doc?.cloud?.conflicts !== disk.cloud?.conflicts)
+      )
         this.activate(disk);
     }, false);
   reload = () =>
@@ -269,7 +331,7 @@ export class WorkspaceController {
               path: this.state.doc.path,
             })
           : null;
-      if (isIOS) await invoke("clear_recovery_draft");
+      await invoke("clear_recovery_draft");
       this.activate(disk);
     });
   create = (name: string, directory = false) =>
@@ -303,7 +365,7 @@ export class WorkspaceController {
         name: supportedName(name),
         markdown: this.state.doc.markdown,
       });
-      if (isIOS) await invoke("clear_recovery_draft");
+      await invoke("clear_recovery_draft");
       this.activate(copy);
       this.set({
         workspace: await invoke<Workspace>("list_workspace", { root }),
@@ -388,9 +450,24 @@ export class WorkspaceController {
     };
     document.addEventListener("visibilitychange", visibility);
     window.addEventListener("anubis-background", background);
+    let cloudPollPending = false;
+    const cloudTimer = setInterval(() => {
+      if (
+        cloudPollPending ||
+        document.visibilityState === "hidden" ||
+        !this.state.doc?.cloud ||
+        this.state.busy
+      )
+        return;
+      cloudPollPending = true;
+      void this.cloudStatus().finally(() => {
+        cloudPollPending = false;
+      });
+    }, 5000);
     await invoke("frontend_ready");
     return () => {
       clearTimeout(timer);
+      clearInterval(cloudTimer);
       unwatch();
       watchError();
       unfocus();

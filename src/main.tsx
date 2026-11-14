@@ -1,5 +1,6 @@
 import React, {
   useEffect,
+  useLayoutEffect,
   useId,
   useRef,
   useState,
@@ -27,6 +28,7 @@ import {
   FilePlus,
   Search,
   FileText,
+  CloudDownload,
   Code2,
   Sun,
   Moon,
@@ -43,7 +45,7 @@ import {
 } from "lucide-react";
 import { workspace, type Entry } from "./workspace";
 import { loadDocument } from "./editor";
-import { isIOS, compactNavigation } from "./platform";
+import { isIOS, compactNavigation, interfaceScale } from "./platform";
 import "./ocean.css";
 import "./atom-one.css";
 import "./style.css";
@@ -67,6 +69,30 @@ function FileActions({
   const trigger = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);
   const [position, setPosition] = useState({ top: 0, left: 0 });
+  const placeMenu = () => {
+    if (!trigger.current || !popup.current) return;
+    const rect = trigger.current.getBoundingClientRect();
+    const menu = popup.current;
+    const width = menu.offsetWidth || parseFloat(getComputedStyle(menu).width);
+    const height = menu.offsetHeight || 100 * interfaceScale();
+    const viewport = window.visualViewport;
+    setPosition({
+      top: Math.max(
+        8,
+        Math.min(
+          rect.bottom + 4,
+          (viewport?.height ?? innerHeight) - height - 8,
+        ),
+      ),
+      left: Math.max(
+        8,
+        Math.min(
+          rect.right - width,
+          (viewport?.width ?? innerWidth) - width - 8,
+        ),
+      ),
+    });
+  };
   const close = () => {
     popup.current?.hidePopover();
     trigger.current?.focus();
@@ -80,13 +106,7 @@ function FileActions({
         aria-expanded={open}
         aria-controls={id}
         popoverTarget={id}
-        onClick={(event) => {
-          const rect = event.currentTarget.getBoundingClientRect();
-          setPosition({
-            top: Math.min(rect.bottom + 4, window.innerHeight - 100),
-            left: Math.max(8, rect.right - 160),
-          });
-        }}
+        onClick={placeMenu}
       >
         <MoreHorizontal size={16} />
       </button>
@@ -106,8 +126,10 @@ function FileActions({
         onToggle={(event) => {
           const isOpen = event.newState === "open";
           setOpen(isOpen);
-          if (isOpen)
+          if (isOpen) {
+            placeMenu();
             popup.current?.querySelector<HTMLButtonElement>("button")?.focus();
+          }
         }}
       >
         <button
@@ -171,7 +193,7 @@ function FileTree({
           <div key={entry.path}>
             <div
               className={`folder-row ${selectedFolder === entry.path ? "selected-folder" : ""}`}
-              style={{ paddingLeft: 4 + depth * 14 }}
+              style={{ paddingLeft: `${(4 + depth * 14) / 16}rem` }}
             >
               <button
                 className="folder-disclosure"
@@ -210,7 +232,7 @@ function FileTree({
                 ) : (
                   <p
                     className="folder-empty"
-                    style={{ paddingLeft: 38 + depth * 14 }}
+                    style={{ paddingLeft: `${(38 + depth * 14) / 16}rem` }}
                   >
                     Empty folder
                   </p>
@@ -224,15 +246,19 @@ function FileTree({
         <div
           className={`file-row ${active === entry.path ? "active" : ""}`}
           key={entry.path}
-          style={{ marginLeft: depth * 14 }}
+          style={{ marginLeft: `${(depth * 14) / 16}rem` }}
         >
           <button
             className="file-open"
             aria-current={active === entry.path ? "page" : undefined}
-            title={entry.path}
+            title={`${entry.path}${entry.cloud && !entry.cloud.downloaded ? " — Download from iCloud" : ""}`}
             onClick={() => onOpen(entry.path)}
           >
-            <FileText size={16} />
+            {entry.cloud && !entry.cloud.downloaded ? (
+              <CloudDownload size={16} />
+            ) : (
+              <FileText size={16} />
+            )}
             <span>{entry.name}</span>
           </button>
           <FileActions
@@ -259,7 +285,55 @@ function App() {
   const state = useSyncExternalStore(workspace.subscribe, workspace.snapshot);
   const doc = state.doc || { path: "", name: "", markdown: "", version: "" };
   const plainText = /\.txt$/i.test(doc.name);
-  const [sidebar, setSidebar] = useState(() => !compactNavigation()),
+  const [appZoom, setAppZoom] = useState(() => {
+    const saved = Number(localStorage.getItem("kronos.appZoom"));
+    if (
+      Number.isInteger(saved) &&
+      saved >= 75 &&
+      saved <= 150 &&
+      saved % 5 === 0
+    )
+      return saved;
+    // Migrate the old writing size to an equivalent app scale once. Keep the
+    // legacy key intact so older installations retain their writing preference.
+    const legacy = Number(localStorage.getItem("kronos.fontSize"));
+    return Number.isInteger(legacy) && legacy >= 12 && legacy <= 20
+      ? Math.max(
+          75,
+          Math.min(150, Math.round((legacy / (isIOS ? 16 : 15)) * 20) * 5),
+        )
+      : 100;
+  });
+  const [committedZoom, setCommittedZoom] = useState(appZoom);
+  const [zoomSaveError, setZoomSaveError] = useState("");
+  const draggingZoom = useRef(false);
+  const changeZoom = (value: number) => {
+    setAppZoom(value);
+    if (!draggingZoom.current) setCommittedZoom(value);
+  };
+  const finishZoomDrag = (event: React.PointerEvent<HTMLInputElement>) => {
+    draggingZoom.current = false;
+    setCommittedZoom(Number(event.currentTarget.value));
+  };
+  useLayoutEffect(() => {
+    document.documentElement.style.setProperty(
+      "--app-zoom",
+      String(committedZoom / 100),
+    );
+    try {
+      localStorage.setItem("kronos.appZoom", String(committedZoom));
+      setZoomSaveError("");
+    } catch {
+      setZoomSaveError(
+        "App zoom changed, but could not be saved on this device.",
+      );
+    }
+    // Container queries and pointer coordinates must share the same scale.
+    window.dispatchEvent(new Event("resize"));
+  }, [committedZoom]);
+  const [sidebar, setSidebar] = useState(
+      () => !compactNavigation(appZoom / 100),
+    ),
     [search, setSearch] = useState(""),
     [source, setSource] = useState(false),
     [focusMode, setFocusMode] = useState(false),
@@ -273,7 +347,7 @@ function App() {
     return Number.isFinite(saved) && saved >= 220 && saved <= 480 ? saved : 258;
   });
   const [sidebarLimit, setSidebarLimit] = useState(() =>
-    Math.max(220, Math.min(480, window.innerWidth - 360)),
+    Math.max(220, Math.min(480, window.innerWidth / (appZoom / 100) - 360)),
   );
   const resizeStart = useRef<{ x: number; width: number } | null>(null);
   const [resizing, setResizing] = useState(false);
@@ -283,7 +357,12 @@ function App() {
   }, [sidebarWidth]);
   useEffect(() => {
     const resized = () =>
-      setSidebarLimit(Math.max(220, Math.min(480, window.innerWidth - 360)));
+      setSidebarLimit(
+        Math.max(
+          220,
+          Math.min(480, window.innerWidth / interfaceScale() - 360),
+        ),
+      );
     window.addEventListener("resize", resized);
     return () => window.removeEventListener("resize", resized);
   }, []);
@@ -334,21 +413,6 @@ function App() {
     document.documentElement.dataset.palette = palette;
     localStorage.setItem("kronos.palette", palette);
   }, [palette]);
-  const [fontSize, setFontSize] = useState(() => {
-    const saved = Number(localStorage.getItem("kronos.fontSize"));
-    return Number.isInteger(saved) && saved >= 12 && saved <= 20
-      ? saved
-      : isIOS
-        ? 16
-        : 15;
-  });
-  useEffect(() => {
-    document.documentElement.style.setProperty(
-      "--editor-font-size",
-      `${fontSize}px`,
-    );
-    localStorage.setItem("kronos.fontSize", String(fontSize));
-  }, [fontSize]);
   const [writing, setWriting] = useState(false);
   const pointerPosition = useRef<{ x: number; y: number } | null>(null);
   const idleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -533,9 +597,25 @@ function App() {
     window.addEventListener("keydown", key);
     return () => window.removeEventListener("keydown", key);
   });
-  const errorMessage = state.error && (
+  const cloud = state.doc?.cloud;
+  const cloudConflict = !!cloud?.conflicts;
+  const errorMessage = (state.error || cloudConflict || cloud?.error) && (
     <div className="action-error" role="alert">
-      <span>{state.error}</span>
+      <span>
+        {state.error ||
+          (cloudConflict
+            ? "iCloud has competing versions of this document. Keep both to preserve each version as a separate file."
+            : cloud?.error)}
+      </span>
+      {cloudConflict && (
+        <button
+          type="button"
+          disabled={state.busy}
+          onClick={() => void workspace.keepBoth()}
+        >
+          Keep both versions
+        </button>
+      )}
       {state.conflict ? (
         <>
           <button type="button" onClick={() => void workspace.reload()}>
@@ -555,7 +635,7 @@ function App() {
             Save a copy
           </button>
         </>
-      ) : (
+      ) : !cloudConflict && !cloud?.error ? (
         <button
           type="button"
           aria-label="Dismiss error"
@@ -563,13 +643,15 @@ function App() {
         >
           <X size={16} />
         </button>
-      )}
+      ) : null}
     </div>
   );
   return (
     <div
       style={
-        { "--sidebar-width": `${visibleSidebarWidth}px` } as React.CSSProperties
+        {
+          "--sidebar-width": `${visibleSidebarWidth / 16}rem`,
+        } as React.CSSProperties
       }
       onPointerMove={(event) => {
         const previous = pointerPosition.current;
@@ -740,8 +822,7 @@ function App() {
             if (resizeStart.current)
               changeSidebarWidth(
                 resizeStart.current.width +
-                  event.clientX -
-                  resizeStart.current.x,
+                  (event.clientX - resizeStart.current.x) / interfaceScale(),
               );
           }}
           onPointerUp={(event) => {
@@ -796,18 +877,27 @@ function App() {
           </div>
           <div className="header-actions">
             <span
-              className={`saved ${state.conflict ? "danger" : ""}`}
+              className={`saved ${state.conflict || cloudConflict || cloud?.error ? "danger" : ""}`}
               role="status"
             >
-              {state.doc
-                ? state.conflict
-                  ? "Not saved"
-                  : state.saving
-                    ? "Saving…"
-                    : state.dirty
-                      ? "Unsaved changes"
-                      : "Saved"
-                : ""}
+              {state.opening ||
+                (state.doc
+                  ? state.conflict
+                    ? "Not saved"
+                    : state.saving
+                      ? "Saving…"
+                      : state.dirty
+                        ? "Unsaved changes"
+                        : cloudConflict
+                          ? "iCloud conflict"
+                          : cloud?.error
+                            ? "Saved locally · iCloud error"
+                            : cloud
+                              ? cloud.uploaded
+                                ? "Uploaded to iCloud"
+                                : "Saved locally · Upload pending"
+                              : "Saved"
+                  : "")}
             </span>
             <div
               className="editor-controls"
@@ -997,25 +1087,47 @@ function App() {
             </div>
           </fieldset>
           <fieldset>
-            <legend>Writing</legend>
-            <div className="font-size-setting">
-              <label htmlFor="font-size">Default font size</label>
-              <output htmlFor="font-size">{fontSize}</output>
+            <legend>Size</legend>
+            <div className="app-zoom-setting">
+              <label htmlFor="app-zoom">App zoom</label>
+              <output htmlFor="app-zoom">{appZoom}%</output>
             </div>
+            <p id="app-zoom-description">
+              Scale text, icons, and controls throughout the app.
+            </p>
             <input
-              className="font-size-slider"
-              id="font-size"
+              className="app-zoom-slider"
+              id="app-zoom"
               type="range"
-              min={12}
-              max={20}
-              step={1}
-              value={fontSize}
-              onChange={(event) => setFontSize(Number(event.target.value))}
+              min={75}
+              max={150}
+              step={5}
+              value={appZoom}
+              aria-valuetext={`${appZoom}%`}
+              aria-describedby="app-zoom-description"
+              onPointerDown={() => {
+                draggingZoom.current = true;
+              }}
+              onPointerUp={finishZoomDrag}
+              onPointerCancel={finishZoomDrag}
+              onBlur={(event) => {
+                draggingZoom.current = false;
+                setCommittedZoom(Number(event.currentTarget.value));
+              }}
+              onChange={(event) => changeZoom(Number(event.target.value))}
             />
-            <div className="font-size-range" aria-hidden="true">
-              <span>12</span>
-              <span>20</span>
+            <div className="app-zoom-range">
+              <span>75%</span>
+              <button
+                type="button"
+                disabled={appZoom === 100}
+                onClick={() => changeZoom(100)}
+              >
+                Reset to 100%
+              </button>
+              <span>150%</span>
             </div>
+            {zoomSaveError && <p role="alert">{zoomSaveError}</p>}
           </fieldset>
         </dialog>
         <main

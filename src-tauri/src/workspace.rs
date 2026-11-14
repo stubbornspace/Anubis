@@ -1,3 +1,4 @@
+use crate::apple::{self, Access, Cloud};
 use serde::{Deserialize, Serialize};
 use std::{
     fs,
@@ -15,6 +16,8 @@ pub struct Entry {
     pub name: String,
     pub directory: bool,
     pub children: Vec<Entry>,
+    #[serde(default)]
+    pub cloud: Option<Cloud>,
 }
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct Snapshot {
@@ -22,6 +25,8 @@ pub struct Snapshot {
     pub name: String,
     pub markdown: String,
     pub version: String,
+    #[serde(default)]
+    pub cloud: Option<Cloud>,
 }
 #[derive(Serialize)]
 pub struct Listing {
@@ -53,16 +58,30 @@ pub fn relative(root: &Path, path: &Path) -> String {
 // Never follow symlinks, or allow frontend-supplied paths to escape the chosen root.
 pub fn resolve(root: &Path, path: &str) -> Result<PathBuf, String> {
     let mut result = root.to_path_buf();
-    for part in Path::new(path).components() {
+    let parts: Vec<_> = Path::new(path).components().collect();
+    for (index, part) in parts.iter().enumerate() {
         match part {
             Component::Normal(name) => result.push(name),
             _ => return Err("Invalid workspace path.".into()),
         }
-        if fs::symlink_metadata(&result)
-            .map_err(error)?
-            .file_type()
-            .is_symlink()
-        {
+        let metadata = match fs::symlink_metadata(&result) {
+            Ok(metadata) => metadata,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound && index + 1 == parts.len() => {
+                let stub = result.with_file_name(format!(
+                    ".{}.icloud",
+                    result.file_name().unwrap().to_string_lossy()
+                ));
+                if fs::symlink_metadata(&stub)
+                    .is_ok_and(|m| m.is_file() && !m.file_type().is_symlink())
+                    && apple::placeholder(&stub)
+                {
+                    return Ok(result);
+                }
+                return Err(error(e));
+            }
+            Err(e) => return Err(error(e)),
+        };
+        if metadata.file_type().is_symlink() {
             return Err("Symbolic links are not supported.".into());
         }
     }
@@ -76,6 +95,9 @@ pub fn resolve(root: &Path, path: &str) -> Result<PathBuf, String> {
     Ok(result)
 }
 pub fn listing(root: &Path) -> Result<Listing, String> {
+    apple::coordinate(root, None, Access::Metadata, || listing_inner(root))
+}
+fn listing_inner(root: &Path) -> Result<Listing, String> {
     let mut count = 0;
     let mut warnings = Vec::new();
     let entries = scan(root, root, 0, &mut count, &mut warnings)?;
@@ -115,21 +137,31 @@ fn scan(
                 "This folder has more than 20,000 entries. Choose a smaller folder.".into(),
             );
         }
-        let name = match item.file_name().into_string() {
+        let mut name = match item.file_name().into_string() {
             Ok(n) => n,
             Err(_) => {
                 warnings.push("Skipped a filename that is not UTF-8.".into());
                 continue;
             }
         };
-        if name.starts_with('.') {
+        let placeholder = name.starts_with('.')
+            && name.ends_with(".icloud")
+            && item.file_type().map_err(error)?.is_file()
+            && apple::placeholder(&item.path());
+        if placeholder {
+            name = name[1..name.len() - 7].to_string();
+        } else if name.starts_with('.') {
             continue;
         }
         let kind = item.file_type().map_err(error)?;
         if kind.is_symlink() {
             continue;
         }
-        let path = item.path();
+        let path = if placeholder {
+            dir.join(&name)
+        } else {
+            item.path()
+        };
         if kind.is_dir() {
             let children = match scan(root, &path, depth + 1, count, warnings) {
                 Ok(children) => children,
@@ -144,6 +176,7 @@ fn scan(
                 name,
                 directory: true,
                 children,
+                cloud: None,
             });
         } else if kind.is_file() && supported(&path) {
             entries.push(Entry {
@@ -151,6 +184,11 @@ fn scan(
                 name,
                 directory: false,
                 children: Vec::new(),
+                cloud: apple::cloud(&path)?.or(if placeholder {
+                    apple::cloud(&item.path())?
+                } else {
+                    None
+                }),
             });
         }
     }
@@ -186,11 +224,15 @@ fn snapshot(root: &Path, path: &Path, data: &[u8]) -> Result<Snapshot, String> {
         name: path.file_name().unwrap().to_string_lossy().into(),
         markdown: text.trim_start_matches('\u{feff}').into(),
         version: blake3::hash(data).to_hex().to_string(),
+        cloud: apple::cloud(path)?.or(apple::cloud(path.parent().unwrap())?),
     })
 }
 pub fn read(root: &Path, path: &str) -> Result<Snapshot, String> {
-    let path = resolve(root, path)?;
-    snapshot(root, &path, &bytes(&path)?)
+    let target = resolve(root, path)?;
+    apple::coordinate(&target, None, Access::Read, || {
+        let path = resolve(root, path)?;
+        snapshot(root, &path, &bytes(&path)?)
+    })
 }
 fn verify(data: &[u8], version: &str) -> Result<(), String> {
     if blake3::hash(data).to_hex().as_str() != version {
@@ -199,10 +241,17 @@ fn verify(data: &[u8], version: &str) -> Result<(), String> {
     Ok(())
 }
 pub fn save(root: &Path, path: &str, markdown: &str, version: &str) -> Result<Snapshot, String> {
+    let target = resolve(root, path)?;
+    apple::coordinate(&target, None, Access::Replace, || {
+        save_inner(root, path, markdown, version)
+    })
+}
+fn save_inner(root: &Path, path: &str, markdown: &str, version: &str) -> Result<Snapshot, String> {
     let path = resolve(root, path)?;
     if fs::metadata(&path).map_err(error)?.permissions().readonly() {
         return Err("This file is read-only. Save your edits as a copy.".into());
     }
+    ensure_no_cloud_conflicts(&path)?;
     let original = bytes(&path)?;
     verify(&original, version)?;
     let old = std::str::from_utf8(&original).map_err(error)?;
@@ -218,7 +267,7 @@ pub fn save(root: &Path, path: &str, markdown: &str, version: &str) -> Result<Sn
     if text.len() as u64 > MAX_BYTES {
         return Err("Document exceeds the 10 MB editing limit.".into());
     }
-    let saved = snapshot(root, &path, text.as_bytes())?;
+    let saved = pending_upload(snapshot(root, &path, text.as_bytes())?);
     // A same-directory temporary file keeps a failed write from truncating the original.
     let mut temp = tempfile::NamedTempFile::new_in(path.parent().unwrap()).map_err(error)?;
     temp.as_file()
@@ -249,6 +298,13 @@ fn validate_name(name: &str, file: bool) -> Result<(), String> {
 }
 pub fn create(root: &Path, parent: &str, name: &str, markdown: &str) -> Result<Snapshot, String> {
     validate_name(name, true)?;
+    let target = resolve(root, parent)?.join(name);
+    apple::coordinate(&target, None, Access::Create, || {
+        create_inner(root, parent, name, markdown)
+    })
+}
+fn create_inner(root: &Path, parent: &str, name: &str, markdown: &str) -> Result<Snapshot, String> {
+    validate_name(name, true)?;
     if markdown.len() as u64 > MAX_BYTES {
         return Err("Document exceeds the 10 MB editing limit.".into());
     }
@@ -257,7 +313,7 @@ pub fn create(root: &Path, parent: &str, name: &str, markdown: &str) -> Result<S
         return Err("Select a folder.".into());
     }
     let target = parent.join(name);
-    let created = snapshot(root, &target, markdown.as_bytes())?;
+    let created = pending_upload(snapshot(root, &target, markdown.as_bytes())?);
     let mut temp = tempfile::NamedTempFile::new_in(parent).map_err(error)?;
     temp.write_all(markdown.as_bytes()).map_err(error)?;
     temp.as_file().sync_all().map_err(error)?;
@@ -267,7 +323,10 @@ pub fn create(root: &Path, parent: &str, name: &str, markdown: &str) -> Result<S
 }
 pub fn create_folder(root: &Path, parent: &str, name: &str) -> Result<(), String> {
     validate_name(name, false)?;
-    fs::create_dir(resolve(root, parent)?.join(name)).map_err(error)
+    let target = resolve(root, parent)?.join(name);
+    apple::coordinate(&target, None, Access::Create, || {
+        fs::create_dir(resolve(root, parent)?.join(name)).map_err(error)
+    })
 }
 #[cfg(any(target_os = "macos", target_os = "ios"))]
 fn rename_noclobber(source: &Path, dest: &Path) -> Result<(), String> {
@@ -288,13 +347,27 @@ fn rename_noclobber(source: &Path, dest: &Path) -> Result<(), String> {
 pub fn rename(root: &Path, path: &str, name: &str, version: &str) -> Result<Snapshot, String> {
     validate_name(name, true)?;
     let source = resolve(root, path)?;
+    let destination = source.parent().unwrap().join(name);
+    if source == destination {
+        return apple::coordinate(&source, None, Access::Read, || {
+            rename_inner(root, path, name, version)
+        });
+    }
+    apple::coordinate(&source, Some(&destination), Access::Move, || {
+        rename_inner(root, path, name, version)
+    })
+}
+fn rename_inner(root: &Path, path: &str, name: &str, version: &str) -> Result<Snapshot, String> {
+    validate_name(name, true)?;
+    let source = resolve(root, path)?;
+    ensure_no_cloud_conflicts(&source)?;
     let data = bytes(&source)?;
     verify(&data, version)?;
     let dest = source.parent().unwrap().join(name);
     if source == dest {
         return snapshot(root, &source, &data);
     }
-    let renamed = snapshot(root, &dest, &data)?;
+    let renamed = pending_upload(snapshot(root, &dest, &data)?);
     rename_noclobber(&source, &dest).map_err(|e| format!("Could not rename to {name}: {e}"))?;
     Ok(renamed)
 }
@@ -304,14 +377,46 @@ pub fn delete_with(
     version: &str,
     trash: impl FnOnce(&Path) -> Result<(), String>,
 ) -> Result<(), String> {
-    let path = resolve(root, path)?;
-    verify(&bytes(&path)?, version)?;
-    trash(&path)
+    let target = resolve(root, path)?;
+    apple::coordinate(&target, None, Access::Delete, || {
+        let path = resolve(root, path)?;
+        ensure_no_cloud_conflicts(&path)?;
+        verify(&bytes(&path)?, version)?;
+        trash(&path)
+    })
 }
-#[cfg(not(target_os = "ios"))]
 pub fn delete(root: &Path, path: &str, version: &str) -> Result<(), String> {
     delete_with(root, path, version, |path| {
+        #[cfg(any(target_os = "macos", target_os = "ios"))]
+        return apple::trash(path);
+        #[cfg(not(any(target_os = "macos", target_os = "ios")))]
         trash::delete(path).map_err(error)
+    })
+}
+
+fn pending_upload(mut snapshot: Snapshot) -> Snapshot {
+    if let Some(cloud) = &mut snapshot.cloud {
+        cloud.uploaded = false;
+        cloud.downloaded = true;
+    }
+    snapshot
+}
+fn ensure_no_cloud_conflicts(path: &Path) -> Result<(), String> {
+    if apple::cloud(path)?.is_some_and(|cloud| cloud.conflicts > 0) {
+        return Err("iCloud has competing versions of this file. Keep both versions before changing or deleting it.".into());
+    }
+    Ok(())
+}
+pub fn cloud_status(root: &Path, path: &str) -> Result<Option<Cloud>, String> {
+    let target = resolve(root, path)?;
+    apple::coordinate(&target, None, Access::Metadata, || {
+        apple::cloud(&resolve(root, path)?)
+    })
+}
+pub fn keep_cloud_versions(root: &Path, path: &str) -> Result<(), String> {
+    let target = resolve(root, path)?;
+    apple::coordinate(&target, None, Access::Replace, || {
+        apple::keep_versions(&resolve(root, path)?)
     })
 }
 
@@ -320,6 +425,105 @@ mod tests {
     use super::*;
     fn root() -> tempfile::TempDir {
         tempfile::tempdir().unwrap()
+    }
+    // Explicit opt-in: only our temporary directory inside the supplied iCloud
+    // test folder is touched. Normal tests never access personal cloud storage.
+    #[cfg(target_os = "macos")]
+    #[test]
+    #[ignore = "requires ANUBIS_ICLOUD_TEST_ROOT pointing to an iCloud Drive test folder"]
+    fn real_icloud_folder_round_trip() {
+        let parent = std::env::var("ANUBIS_ICLOUD_TEST_ROOT").expect("Set ANUBIS_ICLOUD_TEST_ROOT");
+        let directory = tempfile::Builder::new()
+            .prefix("Anubis-Validation-")
+            .tempdir_in(parent)
+            .unwrap();
+        let root = directory.path();
+        let doc = create(root, "", "cloud.md", "# From Mac\n").unwrap();
+        assert!(
+            doc.cloud.is_some(),
+            "The test folder must be in iCloud Drive"
+        );
+        assert!(
+            !doc.cloud.unwrap().uploaded,
+            "A new save must not claim confirmed upload"
+        );
+        let read_back = read(root, "cloud.md").unwrap();
+        assert!(read_back.cloud.is_some());
+        let saved = save(root, "cloud.md", "# Updated on Mac\n", &read_back.version).unwrap();
+        assert!(save(root, "cloud.md", "stale overwrite", &read_back.version).is_err());
+        let renamed = rename(root, "cloud.md", "renamed.md", &saved.version).unwrap();
+        assert_eq!(listing(root).unwrap().entries[0].name, "renamed.md");
+        assert_eq!(
+            read(root, "renamed.md").unwrap().markdown,
+            "# Updated on Mac\n"
+        );
+        keep_cloud_versions(root, "renamed.md").unwrap();
+        delete(root, "renamed.md", &renamed.version).unwrap();
+        assert!(listing(root).unwrap().entries.is_empty());
+    }
+    #[test]
+    fn reading_and_cloud_inspection_do_not_rewrite_local_documents() {
+        let d = root();
+        let r = d.path();
+        let text = "\u{feff}#   Exact spacing\r\n";
+        fs::write(r.join("note.md"), text).unwrap();
+        let modified = fs::metadata(r.join("note.md")).unwrap().modified().unwrap();
+        assert!(cloud_status(r, "note.md").unwrap().is_none());
+        keep_cloud_versions(r, "note.md").unwrap();
+        read(r, "note.md").unwrap();
+        assert_eq!(fs::read_to_string(r.join("note.md")).unwrap(), text);
+        assert_eq!(
+            fs::metadata(r.join("note.md")).unwrap().modified().unwrap(),
+            modified
+        );
+        assert_eq!(fs::read_dir(r).unwrap().count(), 1);
+    }
+    #[test]
+    fn fake_icloud_placeholders_are_not_exposed_or_opened() {
+        let d = root();
+        fs::write(d.path().join(".note.md.icloud"), "not an iCloud file").unwrap();
+        assert!(listing(d.path()).unwrap().entries.is_empty());
+        assert!(read(d.path(), "note.md").is_err());
+        assert!(cloud_status(d.path(), "note.md").is_err());
+        assert!(keep_cloud_versions(d.path(), "../note.md").is_err());
+    }
+    #[cfg(any(target_os = "macos", target_os = "ios"))]
+    #[test]
+    fn file_presenter_reports_coordinated_workspace_changes() {
+        let d = root();
+        let (sender, receiver) = std::sync::mpsc::channel();
+        let _presenter = apple::Presenter::new(d.path(), move || {
+            let _ = sender.send(());
+        })
+        .unwrap();
+        create(d.path(), "", "announced.md", "A coordinated creation").unwrap();
+        receiver
+            .recv_timeout(std::time::Duration::from_secs(5))
+            .expect("No file-presenter notification");
+    }
+    #[cfg(any(target_os = "macos", target_os = "ios"))]
+    #[test]
+    fn coordinated_writers_never_overwrite_a_competing_save() {
+        use std::sync::{Arc, Barrier};
+        let d = root();
+        let doc = create(d.path(), "", "note.md", "original").unwrap();
+        let start = Arc::new(Barrier::new(2));
+        let writers: Vec<_> = ["first", "second"]
+            .into_iter()
+            .map(|text| {
+                let r = d.path().to_path_buf();
+                let version = doc.version.clone();
+                let start = start.clone();
+                std::thread::spawn(move || {
+                    start.wait();
+                    save(&r, "note.md", text, &version)
+                })
+            })
+            .collect();
+        let results: Vec<_> = writers.into_iter().map(|w| w.join().unwrap()).collect();
+        assert_eq!(results.iter().filter(|r| r.is_ok()).count(), 1);
+        let saved = results.into_iter().find_map(Result::ok).unwrap();
+        assert_eq!(read(d.path(), "note.md").unwrap().markdown, saved.markdown);
     }
     #[test]
     fn discovers_supported_files_recursively() {

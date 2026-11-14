@@ -7,7 +7,7 @@ pub struct RecoveryDraft {
     pub document: Snapshot,
 }
 
-#[cfg(any(target_os = "ios", test))]
+#[cfg(any(target_os = "ios", target_os = "macos", test))]
 pub fn store(directory: &std::path::Path, draft: &RecoveryDraft) -> Result<(), String> {
     use std::io::Write;
     std::fs::create_dir_all(directory).map_err(|e| e.to_string())?;
@@ -20,7 +20,7 @@ pub fn store(directory: &std::path::Path, draft: &RecoveryDraft) -> Result<(), S
     Ok(())
 }
 
-#[cfg(any(target_os = "ios", test))]
+#[cfg(any(target_os = "ios", target_os = "macos", test))]
 pub fn load(directory: &std::path::Path) -> Result<Option<RecoveryDraft>, String> {
     match std::fs::read(directory.join("recovery.json")) {
         Ok(data) => serde_json::from_slice(&data)
@@ -31,7 +31,7 @@ pub fn load(directory: &std::path::Path) -> Result<Option<RecoveryDraft>, String
     }
 }
 
-#[cfg(any(target_os = "ios", test))]
+#[cfg(any(target_os = "ios", target_os = "macos", test))]
 pub fn clear(directory: &std::path::Path) -> Result<(), String> {
     match std::fs::remove_file(directory.join("recovery.json")) {
         Ok(()) => Ok(()),
@@ -53,6 +53,7 @@ mod tests {
                 name: "draft.md".into(),
                 markdown: "#   Keep spacing\r\n\nUnfinished 🐕\0".into(),
                 version: "original-version".into(),
+                cloud: None,
             },
         };
         assert!(load(dir.path()).unwrap().is_none());

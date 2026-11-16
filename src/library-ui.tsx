@@ -1,14 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useRef, useState } from "react";
-import {
-  ChevronDown,
-  ChevronRight,
-  FilePlus,
-  FileText,
-  Folder,
-  FolderOpen,
-  Hash,
-} from "lucide-react";
+import { FilePlus } from "lucide-react";
+import { SidebarTree, type SidebarTreeNode } from "./sidebar-tree";
 import { type LibraryState, type NoteSummary } from "./library";
 export type LibraryView = "all" | `tag:${string}`;
 
@@ -45,22 +38,13 @@ export function NoteList({
   const [query, setQuery] = useState("");
   const [searchIds, setSearchIds] = useState<string[] | null>(null);
   const [searchError, setSearchError] = useState("");
-  const [rootOpen, setRootOpen] = useState(
-    () => localStorage.getItem("kronos.notesRootExpanded") !== "false",
-  );
   const [expanded, setExpanded] = useState(storedExpanded);
-  const rootButton = useRef<HTMLButtonElement>(null);
-  const tree = useRef<HTMLElement>(null);
   const scroll = useRef<HTMLElement>(null);
   const previousNote = useRef<string | undefined>(undefined);
   const previousView = useRef(view);
   const saveExpanded = (next: Set<string>) => {
     setExpanded(next);
     localStorage.setItem("kronos.expandedTags", JSON.stringify([...next]));
-  };
-  const changeRoot = (open: boolean) => {
-    setRootOpen(open);
-    localStorage.setItem("kronos.notesRootExpanded", String(open));
   };
   const toggle = (tag: string, open = !expanded.has(tag)) => {
     const next = new Set(expanded);
@@ -76,10 +60,9 @@ export function NoteList({
     const previous = previousNote.current;
     previousNote.current = activePath;
     // Preserve collapsed branches on relaunch, but reveal notes selected/created
-    // during this session, including when typing adds a new tag.
+    // during this session, including when the Tags picker adds a new tag.
     if (previous === undefined || previous === activePath || !state.note)
       return;
-    changeRoot(true);
     setExpanded((current) => {
       const next = new Set(current);
       state.note!.tags.flatMap(parents).forEach((tag) => next.add(tag));
@@ -91,7 +74,6 @@ export function NoteList({
     const previous = previousView.current;
     previousView.current = view;
     if (previous === view || !view.startsWith("tag:")) return;
-    changeRoot(true);
     setExpanded((current) => {
       const next = new Set(current);
       parents(view.slice(4)).forEach((tag) => next.add(tag));
@@ -138,135 +120,61 @@ export function NoteList({
     a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" }),
   );
   const searching = !!query.trim();
-  const noteRow = (note: NoteSummary, depth: number, parent: string) => (
-    <div
-      key={note.id}
-      className={`file-row note-row ${state.note?.id === note.id ? "active" : ""}`}
-      style={{ marginLeft: `${(depth * 14) / 16}rem` }}
-    >
-      <button
-        className="file-open"
-        data-note-node
-        data-parent={parent}
-        aria-current={state.note?.id === note.id ? "page" : undefined}
-        title={[
-          note.title || "Untitled note",
-          ...note.tags.map((tag) => `#${tag}`),
-        ].join(" · ")}
-        disabled={state.busy}
-        onClick={() => onOpen(note.id)}
-      >
-        <FileText size={16} />
-        <span>{note.title || "Untitled note"}</span>
-      </button>
-    </div>
-  );
-  const branches = (parent = "", depth = 1): React.ReactNode => (
-    <>
-      {tags
-        .filter(
-          (tag) =>
-            tag.slice(0, tag.lastIndexOf("/") + 1) ===
-            (parent ? `${parent}/` : ""),
-        )
-        .map((tag) => {
-          const open = expanded.has(tag);
-          return (
-            <div key={tag}>
-              <div
-                className={`folder-row ${view === `tag:${tag}` ? "selected-folder" : ""}`}
-                style={{ paddingLeft: `${(4 + depth * 14) / 16}rem` }}
-              >
-                <button
-                  className="folder-disclosure"
-                  aria-label={`${open ? "Collapse" : "Expand"} tag ${tag}`}
-                  aria-expanded={open}
-                  disabled={state.busy}
-                  onClick={() => toggle(tag)}
-                >
-                  {open ? (
-                    <ChevronDown size={13} />
-                  ) : (
-                    <ChevronRight size={13} />
-                  )}
-                </button>
-                <button
-                  className="folder-select"
-                  data-note-node
-                  data-tag={`tag:${tag}`}
-                  data-parent={parent ? `tag:${parent}` : "all"}
-                  aria-label={`Tag ${tag}`}
-                  aria-expanded={open}
-                  aria-pressed={view === `tag:${tag}`}
-                  title={`Create inside #${tag}`}
-                  disabled={state.busy}
-                  onClick={() => {
-                    select(`tag:${tag}`);
-                    toggle(tag, true);
-                  }}
-                >
-                  <Hash size={15} aria-hidden="true" />
-                  <span>{tag.split("/").pop()}</span>
-                </button>
-              </div>
-              {open && (
-                <div role="group" aria-label={`Notes tagged ${tag}`}>
-                  {branches(tag, depth + 1)}
-                </div>
-              )}
-            </div>
-          );
-        })}
-      {notes
-        .filter((note) =>
-          parent ? note.tags.includes(parent) : !note.tags.length,
-        )
-        .map((note) => noteRow(note, depth, parent ? `tag:${parent}` : "all"))}
-    </>
-  );
-  const handleKeys = (e: React.KeyboardEvent<HTMLElement>) => {
-    const target = e.target as HTMLElement;
-    if (!target.matches("[data-note-node]")) return;
-    const nodes = [
-      ...(tree.current?.querySelectorAll<HTMLButtonElement>(
-        "[data-note-node]:not(:disabled)",
-      ) || []),
-    ];
-    const index = nodes.indexOf(target as HTMLButtonElement);
-    if (["ArrowDown", "ArrowUp", "Home", "End"].includes(e.key)) {
-      e.preventDefault();
-      nodes[
-        e.key === "Home"
-          ? 0
-          : e.key === "End"
-            ? nodes.length - 1
-            : Math.max(
-                0,
-                Math.min(
-                  nodes.length - 1,
-                  index + (e.key === "ArrowDown" ? 1 : -1),
-                ),
-              )
-      ]?.focus();
-    } else if (e.key === "ArrowRight" && target.dataset.tag) {
-      e.preventDefault();
-      const tag = target.dataset.tag;
-      if (target.getAttribute("aria-expanded") === "true")
-        nodes[index + 1]?.focus();
-      else if (tag === "all") changeRoot(true);
-      else toggle(tag.slice(4), true);
-    } else if (e.key === "ArrowLeft") {
-      e.preventDefault();
-      const tag = target.dataset.tag;
-      if (target.getAttribute("aria-expanded") === "true") {
-        if (tag === "all") changeRoot(false);
-        else if (tag) toggle(tag.slice(4), false);
-      } else
-        nodes
-          .find((node) => node.dataset.tag === target.dataset.parent)
-          ?.focus();
-    }
-  };
+  const noteNode = (note: NoteSummary, parent: string): SidebarTreeNode => ({
+    kind: "item",
+    id: JSON.stringify([parent, note.id]),
+    label: note.title || "Untitled note",
+    className: "note-row",
+    selected: state.note?.id === note.id,
+    title: [
+      note.title || "Untitled note",
+      ...note.tags.map((tag) => `#${tag}`),
+    ].join(" · "),
+    icon: (
+      <span className="note-list-marker" aria-hidden="true">
+        -
+      </span>
+    ),
+    onActivate: () => onOpen(note.id),
+  });
+  const branches = (parent = ""): SidebarTreeNode[] => [
+    ...tags
+      .filter(
+        (tag) =>
+          tag.slice(0, tag.lastIndexOf("/") + 1) ===
+          (parent ? `${parent}/` : ""),
+      )
+      .map((tag): SidebarTreeNode => ({
+        kind: "branch",
+        id: `tag:${tag}`,
+        label: tag.split("/").pop()!,
+        accessibleLabel: `Tag ${tag}`,
+        disclosureLabel: `tag ${tag}`,
+        groupLabel: `Notes tagged ${tag}`,
+        title:
+          view === `tag:${tag}`
+            ? "Clear tag selection"
+            : `Create inside #${tag}`,
+        selected: view === `tag:${tag}`,
+        expanded: expanded.has(tag),
+        children: expanded.has(tag) ? branches(tag) : [],
+        onToggle: (open) => toggle(tag, open),
+        onActivate: () => {
+          select(view === `tag:${tag}` ? "all" : `tag:${tag}`);
+          toggle(tag, true);
+        },
+      })),
+    ...notes
+      .filter((note) =>
+        parent ? note.tags.includes(parent) : !note.tags.length,
+      )
+      .map((note) => noteNode(note, parent)),
+  ];
+  const nodes: SidebarTreeNode[] = searching
+    ? notes
+        .filter((note) => searchIds?.includes(note.id))
+        .map((note) => noteNode(note, "search"))
+    : branches();
   return (
     <section className="note-list" aria-label="Notes">
       <div className="note-search-row">
@@ -291,11 +199,7 @@ export function NoteList({
         className="files note-tree"
         aria-label="Note library"
         inert={state.busy}
-        onKeyDown={handleKeys}
-        ref={(el) => {
-          tree.current = el;
-          scroll.current = el;
-        }}
+        ref={scroll}
         onScroll={(e) =>
           sessionStorage.setItem(
             "kronos.noteTreeScroll",
@@ -303,59 +207,18 @@ export function NoteList({
           )
         }
       >
-        {searching ? (
-          <>
-            <p className="note-search-status" role="status">
-              {searchIds === null
-                ? searchError
-                  ? "Search unavailable"
-                  : "Searching…"
-                : `${searchIds.length} matching note${searchIds.length === 1 ? "" : "s"}`}
-            </p>
-            {notes
-              .filter((note) => searchIds?.includes(note.id))
-              .map((note) => noteRow(note, 0, ""))}
-          </>
-        ) : (
-          <>
-            <div
-              className={`folder-row note-root ${view === "all" ? "selected-folder" : ""}`}
-            >
-              <button
-                className="folder-disclosure"
-                aria-label={`${rootOpen ? "Collapse" : "Expand"} All Notes`}
-                aria-expanded={rootOpen}
-                onClick={() => changeRoot(!rootOpen)}
-              >
-                {rootOpen ? (
-                  <ChevronDown size={13} />
-                ) : (
-                  <ChevronRight size={13} />
-                )}
-              </button>
-              <button
-                ref={rootButton}
-                className="folder-select"
-                data-note-node
-                data-tag="all"
-                aria-expanded={rootOpen}
-                aria-pressed={view === "all"}
-                onClick={() => {
-                  select("all");
-                  changeRoot(!rootOpen);
-                }}
-              >
-                {rootOpen ? <FolderOpen size={15} /> : <Folder size={15} />}
-                <span>All Notes</span>
-              </button>
-            </div>
-            {rootOpen && (
-              <div role="group" aria-label="All Notes">
-                {branches()}
-                {!notes.length && <p className="folder-empty">No notes yet.</p>}
-              </div>
-            )}
-          </>
+        {searching && (
+          <p className="note-search-status" role="status">
+            {searchIds === null
+              ? searchError
+                ? "Search unavailable"
+                : "Searching…"
+              : `${searchIds.length} matching note${searchIds.length === 1 ? "" : "s"}`}
+          </p>
+        )}
+        <SidebarTree nodes={nodes} disabled={state.busy} />
+        {!searching && state.ready && !notes.length && (
+          <p className="folder-empty">No notes yet.</p>
         )}
       </nav>
     </section>

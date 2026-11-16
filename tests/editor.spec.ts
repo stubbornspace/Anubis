@@ -202,7 +202,10 @@ test("does not close on failed saves", async ({ page }) => {
 
 test("theme, source and focus remain functional", async ({ page }) => {
   await openWorkspace(page);
-  await page.getByLabel("Toggle theme").click();
+  await expect(page.getByLabel("Toggle theme")).toHaveCount(0);
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await page.getByRole("radio", { name: "Dark", exact: true }).check();
+  await page.getByRole("button", { name: "Close settings" }).click();
   await expect(page.locator(".brand-icon")).toHaveAttribute(
     "src",
     "/icons/anubis-dark.png",

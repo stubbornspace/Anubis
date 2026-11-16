@@ -1,7 +1,6 @@
 import React, {
   useEffect,
   useLayoutEffect,
-  useId,
   useRef,
   useState,
   useSyncExternalStore,
@@ -18,36 +17,34 @@ import TaskItem from "@tiptap/extension-task-item";
 import Placeholder from "@tiptap/extension-placeholder";
 import {
   Settings,
-  Folder,
   FolderOpen,
   FolderPlus,
-  ChevronRight,
   ChevronDown,
-  MoreHorizontal,
   PanelLeft,
   FilePlus,
-  FileText,
-  CloudDownload,
   Code2,
-  Sun,
-  Moon,
   AlignVerticalSpaceAround,
   X,
   Trash2,
-  Pencil,
   NotebookPen,
   ImagePlus,
 } from "lucide-react";
+import { MemoDocumentTree } from "./document-tree";
 import { workspace, type Entry } from "./workspace";
 import { LibraryTools, NoteActions } from "./library-tools";
 import { NoteTags } from "./tag-extension";
-import { tagText } from "./tags";
 import { ImageTools } from "./image-tools";
 import { SelectionToolbar } from "./selection-toolbar";
 import { NoteImage } from "./note-image";
 import { library } from "./library";
 import { NoteList, type LibraryView } from "./library-ui";
-import { loadDocument } from "./editor";
+import { NoteTagPicker } from "./note-tags";
+import {
+  loadDocument,
+  editMarkdown,
+  editorMarkdown,
+  setDocumentContent,
+} from "./editor";
 import { isIOS, compactNavigation, interfaceScale } from "./platform";
 import "./ocean.css";
 import "./atom-one.css";
@@ -57,220 +54,6 @@ type FileModal = {
   kind: "new-file" | "new-folder" | "rename" | "copy";
   entry?: Entry;
 };
-
-function FileActions({
-  document: file,
-  onRename,
-  onDelete,
-}: {
-  document: Entry;
-  onRename: () => void;
-  onDelete: () => void;
-}) {
-  const id = useId();
-  const popup = useRef<HTMLDivElement>(null);
-  const trigger = useRef<HTMLButtonElement>(null);
-  const [open, setOpen] = useState(false);
-  const [position, setPosition] = useState({ top: 0, left: 0 });
-  const placeMenu = () => {
-    if (!trigger.current || !popup.current) return;
-    const rect = trigger.current.getBoundingClientRect();
-    const menu = popup.current;
-    const width = menu.offsetWidth || parseFloat(getComputedStyle(menu).width);
-    const height = menu.offsetHeight || 100 * interfaceScale();
-    const viewport = window.visualViewport;
-    setPosition({
-      top: Math.max(
-        8,
-        Math.min(
-          rect.bottom + 4,
-          (viewport?.height ?? innerHeight) - height - 8,
-        ),
-      ),
-      left: Math.max(
-        8,
-        Math.min(
-          rect.right - width,
-          (viewport?.width ?? innerWidth) - width - 8,
-        ),
-      ),
-    });
-  };
-  const close = () => {
-    popup.current?.hidePopover();
-    trigger.current?.focus();
-  };
-  return (
-    <div className="file-actions">
-      <button
-        ref={trigger}
-        title="File options"
-        aria-label={`Options for ${file.name}`}
-        aria-expanded={open}
-        aria-controls={id}
-        popoverTarget={id}
-        onClick={placeMenu}
-      >
-        <MoreHorizontal size={16} />
-      </button>
-      <div
-        id={id}
-        ref={popup}
-        popover="auto"
-        className="file-menu"
-        style={position}
-        onKeyDown={(event) => {
-          if (event.key === "Escape") {
-            event.preventDefault();
-            event.stopPropagation();
-            close();
-          }
-        }}
-        onToggle={(event) => {
-          const isOpen = event.newState === "open";
-          setOpen(isOpen);
-          if (isOpen) {
-            placeMenu();
-            popup.current?.querySelector<HTMLButtonElement>("button")?.focus();
-          }
-        }}
-      >
-        <button
-          aria-label={`Rename ${file.name}`}
-          onClick={() => {
-            close();
-            onRename();
-          }}
-        >
-          <Pencil size={14} />
-          Rename
-        </button>
-        <button
-          className="danger"
-          aria-label={`Delete ${file.name}`}
-          onClick={() => {
-            close();
-            onDelete();
-          }}
-        >
-          <Trash2 size={14} />
-          Delete
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function FileTree({
-  entries,
-  active,
-  selectedFolder,
-  onRename,
-  onOpen,
-}: {
-  entries: Entry[];
-  active: string;
-  selectedFolder: string;
-  onRename: (entry: Entry) => void;
-  onOpen: (path: string) => void;
-}) {
-  const [expanded, setExpanded] = useState<Set<string>>(new Set());
-  useEffect(() => {
-    setExpanded((current) => {
-      const next = new Set(current);
-      const parts = selectedFolder.split("/");
-      parts.forEach((_, i) => next.add(parts.slice(0, i + 1).join("/")));
-      return next;
-    });
-  }, [selectedFolder]);
-  const render = (items: Entry[], depth = 0): React.ReactNode =>
-    items.map((entry) => {
-      if (entry.directory) {
-        const open = expanded.has(entry.path);
-        return (
-          <div key={entry.path}>
-            <div
-              className={`folder-row ${selectedFolder === entry.path ? "selected-folder" : ""}`}
-              style={{ paddingLeft: `${(4 + depth * 14) / 16}rem` }}
-            >
-              <button
-                className="folder-disclosure"
-                aria-label={`${open ? "Collapse" : "Expand"} ${entry.name}`}
-                aria-expanded={open}
-                onClick={() =>
-                  setExpanded((current) => {
-                    const next = new Set(current);
-                    if (open) next.delete(entry.path);
-                    else next.add(entry.path);
-                    return next;
-                  })
-                }
-              >
-                {open ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
-              </button>
-              <button
-                className="folder-select"
-                aria-label={`Folder ${entry.name}`}
-                aria-pressed={selectedFolder === entry.path}
-                title={`Create inside ${entry.path}`}
-                onClick={() =>
-                  workspace.selectFolder(
-                    selectedFolder === entry.path ? "" : entry.path,
-                  )
-                }
-              >
-                {open ? <FolderOpen size={15} /> : <Folder size={15} />}
-                <span>{entry.name}</span>
-              </button>
-            </div>
-            {open && (
-              <div role="group" aria-label={entry.name}>
-                {entry.children.length ? (
-                  render(entry.children, depth + 1)
-                ) : (
-                  <p
-                    className="folder-empty"
-                    style={{ paddingLeft: `${(38 + depth * 14) / 16}rem` }}
-                  >
-                    Empty folder
-                  </p>
-                )}
-              </div>
-            )}
-          </div>
-        );
-      }
-      return (
-        <div
-          className={`file-row ${active === entry.path ? "active" : ""}`}
-          key={entry.path}
-          style={{ marginLeft: `${(depth * 14) / 16}rem` }}
-        >
-          <button
-            className="file-open"
-            aria-current={active === entry.path ? "page" : undefined}
-            title={`${entry.path}${entry.cloud && !entry.cloud.downloaded ? " — Download from iCloud" : ""}`}
-            onClick={() => onOpen(entry.path)}
-          >
-            {entry.cloud && !entry.cloud.downloaded ? (
-              <CloudDownload size={16} />
-            ) : (
-              <FileText size={16} />
-            )}
-            <span>{entry.name}</span>
-          </button>
-          <FileActions
-            document={entry}
-            onRename={() => onRename(entry)}
-            onDelete={() => void workspace.remove(entry)}
-          />
-        </div>
-      );
-    });
-  return <>{render(entries)}</>;
-}
-
-const MemoFileTree = React.memo(FileTree);
 
 function App() {
   const documentState = useSyncExternalStore(
@@ -361,11 +144,19 @@ function App() {
     }
   };
   const createNote = async () => {
-    if (
-      await library.create(
-        libraryView.startsWith("tag:") ? libraryView.slice(4) : undefined,
+    const selectedTag = libraryView.startsWith("tag:")
+      ? libraryView.slice(4)
+      : undefined;
+    const availableTag =
+      selectedTag &&
+      library.state.notes.some((note) =>
+        note.tags.some(
+          (tag) => tag === selectedTag || tag.startsWith(`${selectedTag}/`),
+        ),
       )
-    ) {
+        ? selectedTag
+        : undefined;
+    if (await library.create(availableTag)) {
       if (compactNavigation()) setSidebar(false);
     }
   };
@@ -580,17 +371,6 @@ function App() {
       void connected.then((disconnect) => disconnect());
     };
   }, []);
-  const [tagSuggestion, setTagSuggestion] = useState<{
-    from: number;
-    to: number;
-    items: string[];
-    index: number;
-  } | null>(null);
-  const tagKey = useRef<(event: KeyboardEvent) => boolean>(() => false);
-  const tagSelect = useRef<(tag: string) => void>(() => {});
-  tagSelect.current = (tag) => {
-    void selectLibraryView(`tag:${tag}`);
-  };
   const imageInput = useRef<HTMLInputElement>(null);
   const imageHandler = useRef<(files: File[]) => Promise<void>>(async () => {});
   const notesModeRef = useRef(notesMode);
@@ -600,11 +380,7 @@ function App() {
       StarterKit.configure({ link: { openOnClick: false } }),
       Markdown,
       NoteImage.configure({ allowBase64: true }),
-      NoteTags.configure({
-        active: () => notesModeRef.current,
-        select: (tag) => tagSelect.current(tag),
-        key: (event) => tagKey.current(event),
-      }),
+      NoteTags,
       TableKit,
       TaskList,
       TaskItem.configure({ nested: true }),
@@ -629,89 +405,9 @@ function App() {
       },
       attributes: { class: "writing", "aria-label": "Markdown editor" },
     },
-    onUpdate: ({ editor }) => updateRef.current(editor.getMarkdown()),
+    onUpdate: ({ editor }) =>
+      updateRef.current(editorMarkdown(editor, notesModeRef.current)),
   });
-  const acceptTag = (index: number) => {
-    if (!tagSuggestion || !editor) return;
-    editor
-      .chain()
-      .focus()
-      .insertContentAt(
-        { from: tagSuggestion.from, to: tagSuggestion.to },
-        tagText(tagSuggestion.items[index]) + " ",
-      )
-      .run();
-    setTagSuggestion(null);
-  };
-  tagKey.current = (event) => {
-    if (!tagSuggestion) return false;
-    if (event.key === "Escape") {
-      setTagSuggestion(null);
-      return true;
-    }
-    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-      setTagSuggestion({
-        ...tagSuggestion,
-        index:
-          (tagSuggestion.index +
-            (event.key === "ArrowDown" ? 1 : tagSuggestion.items.length - 1)) %
-          tagSuggestion.items.length,
-      });
-      return true;
-    }
-    if (event.key === "Enter" || event.key === "Tab") {
-      acceptTag(tagSuggestion.index);
-      return true;
-    }
-    return false;
-  };
-  useEffect(() => {
-    if (!editor) return;
-    const suggest = () => {
-      const selection = editor.state.selection;
-      if (
-        !notesModeRef.current ||
-        !selection.empty ||
-        selection.$from.parent.type.name === "codeBlock" ||
-        editor.isActive("code")
-      ) {
-        setTagSuggestion(null);
-        return;
-      }
-      const before = selection.$from.parent.textBetween(
-        0,
-        selection.$from.parentOffset,
-      );
-      const match = /(?:^|[\s(])#([\p{L}\p{N}_/ -]*)$/u.exec(before);
-      if (!match) {
-        setTagSuggestion(null);
-        return;
-      }
-      const items = [...new Set(library.state.notes.flatMap((n) => n.tags))]
-        .filter(
-          (t) =>
-            t.toLocaleLowerCase().startsWith(match[1].toLocaleLowerCase()) &&
-            t !== match[1],
-        )
-        .slice(0, 6);
-      setTagSuggestion(
-        items.length
-          ? {
-              from: selection.from - match[1].length - 1,
-              to: selection.from,
-              items,
-              index: 0,
-            }
-          : null,
-      );
-    };
-    editor.on("selectionUpdate", suggest);
-    editor.on("update", suggest);
-    return () => {
-      editor.off("selectionUpdate", suggest);
-      editor.off("update", suggest);
-    };
-  }, [editor]);
   const [imageError, setImageError] = useState("");
   imageHandler.current = async (files) => {
     const insertingNote = notesModeRef.current;
@@ -773,7 +469,7 @@ function App() {
     }
   };
   useEffect(() => {
-    if (editor) loadDocument(editor, plainText ? "" : doc.markdown);
+    if (editor) loadDocument(editor, plainText ? "" : doc.markdown, notesMode);
     setSource(false);
     scroll.current?.scrollTo(
       0,
@@ -845,11 +541,7 @@ function App() {
   };
   const toggleSource = () => {
     if (!state.doc || plainText) return;
-    if (source)
-      editor?.commands.setContent(doc.markdown, {
-        contentType: "markdown",
-        emitUpdate: false,
-      });
+    if (source && editor) setDocumentContent(editor, doc.markdown, notesMode);
     setSource(!source);
   };
   useEffect(() => {
@@ -1052,7 +744,7 @@ function App() {
               inert={state.busy}
             >
               {state.workspace && (
-                <MemoFileTree
+                <MemoDocumentTree
                   key={state.workspace.root}
                   entries={state.workspace.entries}
                   active={doc.path}
@@ -1110,13 +802,6 @@ function App() {
             }}
           >
             <Settings size={17} />
-          </button>
-          <button
-            aria-label="Toggle theme"
-            title={dark ? "Light appearance" : "Dark appearance"}
-            onClick={() => setDark(!dark)}
-          >
-            {dark ? <Sun size={17} /> : <Moon size={17} />}
           </button>
         </div>
         <div
@@ -1252,16 +937,17 @@ function App() {
               aria-label="Editor controls"
               inert={state.busy || !state.doc}
             >
-              <button
-                aria-label="Toggle source mode"
-                aria-pressed={source || plainText}
-                disabled={plainText}
-                title="Source mode (⌘/)"
-                className={source ? "enabled" : ""}
-                onClick={toggleSource}
-              >
-                <Code2 size={16} />
-              </button>
+              {isIOS && (
+                <button
+                  aria-label="Hide keyboard"
+                  title="Hide keyboard"
+                  onClick={() =>
+                    (document.activeElement as HTMLElement | null)?.blur()
+                  }
+                >
+                  <ChevronDown size={20} />
+                </button>
+              )}
               <button
                 aria-label={
                   focusMode ? "Disable focus mode" : "Enable focus mode"
@@ -1286,23 +972,17 @@ function App() {
               >
                 <AlignVerticalSpaceAround size={17} />
               </button>
-              {notesMode && note && (
-                <NoteActions key={note.id} note={note} busy={state.busy} />
-              )}
-              {!source && !plainText && (
-                <span className="divider" aria-hidden="true" />
-              )}
-              {isIOS && (
-                <button
-                  aria-label="Hide keyboard"
-                  title="Hide keyboard"
-                  onClick={() =>
-                    (document.activeElement as HTMLElement | null)?.blur()
-                  }
-                >
-                  <ChevronDown size={20} />
-                </button>
-              )}
+              <button
+                aria-label="Toggle source mode"
+                aria-pressed={source || plainText}
+                disabled={plainText}
+                title="Source mode (⌘/)"
+                className={source ? "enabled" : ""}
+                onClick={toggleSource}
+              >
+                <Code2 size={16} />
+              </button>
+              <span className="divider" aria-hidden="true" />
               {!source && !plainText && (
                 <div className="formatting">
                   <input
@@ -1326,6 +1006,41 @@ function App() {
                   </button>
                 </div>
               )}
+              {notesMode && note ? (
+                <React.Fragment key={note.id}>
+                  <NoteTagPicker
+                    note={note}
+                    busy={state.busy}
+                    suggestions={noteState.notes.flatMap((note) => note.tags)}
+                    onChange={(markdown) => {
+                      if (source) library.edit(markdown);
+                      else if (editor) editMarkdown(editor, markdown, true);
+                    }}
+                  />
+                  <NoteActions note={note} busy={state.busy} />
+                </React.Fragment>
+              ) : !notesMode && state.doc ? (
+                <button
+                  aria-label="Delete document"
+                  title="Delete document"
+                  disabled={state.busy}
+                  onClick={() => {
+                    if (!state.doc) return;
+                    void workspace
+                      .remove({ ...state.doc, directory: false, children: [] })
+                      .then(() => {
+                        if (!workspace.state.doc)
+                          document
+                            .querySelector<HTMLButtonElement>(
+                              'button[aria-label="Toggle sidebar"]',
+                            )
+                            ?.focus();
+                      });
+                  }}
+                >
+                  <Trash2 size={16} />
+                </button>
+              ) : null}
             </div>
           </div>
         </header>
@@ -1538,25 +1253,6 @@ function App() {
               onChange={(e) => update(e.target.value)}
             />
           ) : null}
-          {notesMode && !source && tagSuggestion && (
-            <div
-              className="tag-suggestions"
-              role="listbox"
-              aria-label="Tag suggestions"
-            >
-              {tagSuggestion.items.map((tag, index) => (
-                <button
-                  key={tag}
-                  role="option"
-                  aria-selected={index === tagSuggestion.index}
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => acceptTag(index)}
-                >
-                  {tagText(tag)}
-                </button>
-              ))}
-            </div>
-          )}
           <div hidden={!state.doc || source || plainText}>
             <EditorContent editor={editor} />
           </div>

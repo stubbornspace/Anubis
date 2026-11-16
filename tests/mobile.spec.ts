@@ -285,9 +285,15 @@ test("note library navigation and background saves work on touch devices", async
     .getByRole("button", { name: "New note", exact: true })
     .first()
     .tap();
-  await page
-    .getByLabel("Markdown editor")
-    .fill("# Mobile library note\n\n#personal");
+  await page.getByLabel("Markdown editor").fill("Mobile library note");
+  await page.getByRole("button", { name: "Tags", exact: true }).tap();
+  const picker = page.getByRole("dialog", { name: "Tags", exact: true });
+  await picker.getByLabel("Add tag", { exact: true }).fill("personal");
+  await picker.getByRole("button", { name: "Add", exact: true }).tap();
+  await picker.getByRole("button", { name: "Close tags" }).tap();
+  await expect(page.getByLabel("Markdown editor")).not.toContainText(
+    "#personal",
+  );
   await page.evaluate(() =>
     window.dispatchEvent(new Event("anubis-background")),
   );
@@ -299,7 +305,7 @@ test("note library navigation and background saves work on touch devices", async
   await expect(page.locator(".note-list-container")).toHaveCount(0);
   await expect(
     page.getByRole("button", { name: "All Notes", exact: true }),
-  ).toBeVisible();
+  ).toHaveCount(0);
   const personal = page.getByRole("button", {
     name: "Tag personal",
     exact: true,
@@ -314,11 +320,82 @@ test("note library navigation and background saves work on touch devices", async
   await expect(page.getByLabel("Markdown editor")).toContainText(
     "Mobile library note",
   );
+  const checkToolbar = async () => {
+    const wasCollapsed =
+      (await sidebarToggle.getAttribute("aria-expanded")) === "false";
+    if (wasCollapsed) await sidebarToggle.tap();
+    const footer = (await page.locator(".sidebar-controls").boundingBox())!;
+    const settings = (await page
+      .locator('.sidebar-controls button[aria-label="Settings"]')
+      .boundingBox())!;
+    expect(
+      Math.abs(settings.x + settings.width - footer.x - footer.width),
+    ).toBeLessThan(1);
+    await expect(
+      page.getByRole("button", { name: "Toggle theme" }),
+    ).toHaveCount(0);
+
+    if (wasCollapsed)
+      await page.getByLabel("Close files", { exact: true }).tap();
+    const buttons = page
+      .getByRole("group", { name: "Editor controls" })
+      .getByRole("button");
+    const bounds = await buttons.evaluateAll((elements) =>
+      elements.map((element) => {
+        const rect = element.getBoundingClientRect();
+        return {
+          x: rect.x,
+          y: rect.y,
+          right: rect.right,
+          bottom: rect.bottom,
+          width: rect.width,
+          height: rect.height,
+        };
+      }),
+    );
+    for (const [index, rect] of bounds.entries()) {
+      expect(rect.width).toBeGreaterThanOrEqual(44);
+      expect(rect.height).toBeGreaterThanOrEqual(44);
+      expect(rect.x).toBeGreaterThanOrEqual(0);
+      expect(rect.right).toBeLessThanOrEqual(page.viewportSize()!.width);
+      if (index) {
+        const previous = bounds[index - 1];
+        expect(
+          rect.x >= previous.right - 1 || rect.y >= previous.bottom - 1,
+        ).toBe(true);
+      }
+    }
+  };
+  await checkToolbar();
+  await page.getByRole("button", { name: "Tags", exact: true }).tap();
+  const tags = page.getByRole("dialog", { name: "Tags", exact: true });
+  await tags.getByLabel("Add tag", { exact: true }).fill("mobile/project");
+  await tags.getByRole("button", { name: "Add", exact: true }).tap();
+  const bounds = (await tags.boundingBox())!;
+  expect(bounds.x).toBeGreaterThanOrEqual(0);
+  expect(bounds.x + bounds.width).toBeLessThanOrEqual(
+    page.viewportSize()!.width,
+  );
+  const remove = tags.getByRole("button", {
+    name: "Remove tag mobile/project",
+  });
+  const target = (await remove.boundingBox())!;
+  expect(target.width).toBeGreaterThanOrEqual(44);
+  expect(target.height).toBeGreaterThanOrEqual(44);
+  await remove.tap();
+  await tags.getByRole("button", { name: "Close tags" }).tap();
+  await expect(tags).not.toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Tags", exact: true }),
+  ).toBeFocused();
+  await expect(page.getByRole("status")).toHaveText("Saved locally");
+
   await showFiles(page);
   await page.getByRole("button", { name: "Documents", exact: true }).tap();
   if (compact(page))
     await page.getByLabel("Close files", { exact: true }).tap();
   await expect(page.getByLabel("Markdown editor")).toContainText("Welcome");
+  await checkToolbar();
 });
 
 test("selection formatting is available on touch layouts", async ({ page }) => {

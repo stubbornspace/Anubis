@@ -364,7 +364,7 @@ export class LibraryController {
       syncError:
         failure ||
         (result?.conflicts
-          ? `${result.conflicts} conflicting note(s) were preserved as separate conflict copies. Review them in All Notes.`
+          ? `${result.conflicts} conflicting note(s) were preserved as separate conflict copies. Review them in the Notes sidebar.`
           : ""),
     });
     return !failure;

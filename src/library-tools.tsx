@@ -1,7 +1,6 @@
 import { createPortal } from "react-dom";
-import { MoreHorizontal, Trash2 } from "lucide-react";
-import { interfaceScale } from "./platform";
-import { useId, useRef, useState } from "react";
+import { History, Download, Trash2 } from "lucide-react";
+import { useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { library, type Note } from "./library";
 export function LibraryTools({ busy }: { busy: boolean }) {
@@ -52,17 +51,7 @@ export function LibraryTools({ busy }: { busy: boolean }) {
     </fieldset>
   );
 }
-export function NoteHistory({
-  id,
-  busy,
-  onActivate,
-  onClose,
-}: {
-  id: string;
-  busy: boolean;
-  onActivate?: () => void;
-  onClose?: () => void;
-}) {
+export function NoteHistory({ id, busy }: { id: string; busy: boolean }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const button = useRef<HTMLButtonElement>(null);
   const [history, setHistory] = useState<Note[]>([]);
@@ -71,9 +60,10 @@ export function NoteHistory({
     <>
       <button
         ref={button}
+        aria-label="History"
+        title="History"
         disabled={busy}
         onClick={async () => {
-          onActivate?.();
           if (!(await library.save())) return;
           try {
             setHistory(
@@ -88,14 +78,14 @@ export function NoteHistory({
           }
         }}
       >
-        History
+        <History size={16} />
       </button>
       {createPortal(
         <dialog
           ref={dialog}
           className="settings-dialog"
           aria-label="Note history"
-          onClose={() => (onClose ? onClose() : button.current?.focus())}
+          onClose={() => button.current?.focus()}
         >
           <div className="settings-heading">
             <h2>Note history</h2>
@@ -131,129 +121,38 @@ export function NoteHistory({
 }
 
 export function NoteActions({ note, busy }: { note: Note; busy: boolean }) {
-  const id = useId();
-  const popup = useRef<HTMLDivElement>(null);
-  const trigger = useRef<HTMLButtonElement>(null);
-  const [open, setOpen] = useState(false);
-  const [position, setPosition] = useState({ top: 0, left: 0 });
-  const focusTrigger = () => trigger.current?.focus();
-  const close = () => {
-    popup.current?.hidePopover();
-    focusTrigger();
-  };
-  const place = () => {
-    if (!trigger.current || !popup.current) return;
-    const rect = trigger.current.getBoundingClientRect();
-    setPosition({
-      top: Math.max(
-        8,
-        Math.min(rect.bottom + 4, innerHeight - popup.current.offsetHeight - 8),
-      ),
-      left: Math.max(
-        8,
-        Math.min(
-          rect.right - (popup.current.offsetWidth || 180 * interfaceScale()),
-          innerWidth - popup.current.offsetWidth - 8,
-        ),
-      ),
-    });
-  };
+  const deleteButton = useRef<HTMLButtonElement>(null);
   return (
-    <span className="note-options">
+    <>
+      <NoteHistory id={note.id} busy={busy} />
       <button
-        ref={trigger}
-        title="Note actions"
-        aria-label="Note actions"
-        aria-expanded={open}
-        aria-controls={id}
-        popoverTarget={id}
+        aria-label="Export"
+        title="Export"
         disabled={busy}
-        onClick={place}
+        onClick={() => void library.export(note.id)}
       >
-        <MoreHorizontal size={17} />
+        <Download size={16} />
       </button>
-      <div
-        ref={popup}
-        id={id}
-        popover="auto"
-        className="file-menu note-menu"
-        style={position}
-        onToggle={(event) => {
-          const opened = event.newState === "open";
-          setOpen(opened);
-          if (opened) {
-            place();
-            popup.current
-              ?.querySelector<HTMLButtonElement>("button:not(:disabled)")
-              ?.focus();
-          }
-        }}
-        onKeyDown={(event) => {
-          if (!event.currentTarget.contains(event.target as Node)) return;
-          if (event.key === "Escape") {
-            event.preventDefault();
-            event.stopPropagation();
-            close();
-          }
-          if (["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) {
-            event.preventDefault();
-            const buttons = [
-              ...(popup.current?.querySelectorAll<HTMLButtonElement>(
-                "button:not(:disabled)",
-              ) || []),
-            ];
-            const index = buttons.indexOf(
-              document.activeElement as HTMLButtonElement,
-            );
-            const next =
-              event.key === "Home"
-                ? 0
-                : event.key === "End"
-                  ? buttons.length - 1
-                  : (index +
-                      (event.key === "ArrowDown" ? 1 : -1) +
-                      buttons.length) %
-                    buttons.length;
-            buttons[next]?.focus();
-          }
+      <button
+        ref={deleteButton}
+        aria-label="Delete note"
+        title="Delete note"
+        disabled={busy}
+        onClick={() => {
+          void library.remove().then(() =>
+            requestAnimationFrame(() => {
+              if (!deleteButton.current?.isConnected)
+                document
+                  .querySelector<HTMLButtonElement>(
+                    'button[aria-label="Toggle sidebar"]',
+                  )
+                  ?.focus();
+            }),
+          );
         }}
       >
-        <NoteHistory
-          id={note.id}
-          busy={busy}
-          onActivate={close}
-          onClose={focusTrigger}
-        />
-        <button
-          disabled={busy}
-          onClick={() => {
-            close();
-            void library.export(note.id);
-          }}
-        >
-          Export
-        </button>
-        <button
-          disabled={busy}
-          className="danger"
-          onClick={() => {
-            close();
-            void library.remove().then(() =>
-              requestAnimationFrame(() => {
-                if (!trigger.current?.isConnected)
-                  document
-                    .querySelector<HTMLButtonElement>(
-                      'button[aria-label="Toggle sidebar"]',
-                    )
-                    ?.focus();
-              }),
-            );
-          }}
-        >
-          <Trash2 size={16} />
-          Delete note
-        </button>
-      </div>
-    </span>
+        <Trash2 size={16} />
+      </button>
+    </>
   );
 }

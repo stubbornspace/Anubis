@@ -1,4 +1,5 @@
 :root {
+  --body-font-size: 0.9375rem;
   font-size: calc(16px * var(--app-zoom, 1));
   font-family:
     system-ui,
@@ -66,6 +67,7 @@ input {
   overflow: hidden;
 }
 .sidebar {
+  --sidebar-font-size: calc(var(--body-font-size) - 0.0625rem);
   position: relative;
   width: var(--sidebar-width, 16.125rem);
   flex-shrink: 0;
@@ -100,7 +102,7 @@ input {
   width: 100%;
   justify-content: flex-start;
   padding: 0.6875rem 0.8125rem;
-  font-size: 0.75rem;
+  font-size: var(--sidebar-font-size);
   margin: 0.125rem 0;
   gap: 0.625rem;
   text-align: left;
@@ -114,10 +116,14 @@ input {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.files .active {
-  background: var(--active);
-  color: var(--text);
-  font-weight: 550;
+.files .file-row.active::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0.5rem;
+  bottom: 0.5rem;
+  border-left: 0.125rem solid var(--accent);
+  pointer-events: none;
 }
 .main {
   flex: 1;
@@ -174,7 +180,7 @@ header {
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior-y: contain;
-  padding: 3.5rem max(2.5rem, calc((100% - 45.625rem) / 2)) 3.75rem;
+  padding: 1.5rem max(2.5rem, calc((100% - 42.5rem) / 2)) 3.75rem;
   scroll-behavior: smooth;
 }
 .page-scroll,
@@ -202,7 +208,7 @@ header {
   scroll-margin-top: 1.875rem;
 }
 .writing h1 {
-  font-size: 2.1875rem;
+  font-size: 1.75rem;
   margin: 0 0 1.75rem;
   letter-spacing: -0.08125rem;
 }
@@ -409,14 +415,8 @@ header {
 }
 
 @container app-layout (min-width: 93.75rem) {
-  .page-scroll {
-    padding-top: 4.0625rem;
-  }
   .writing {
     font-size: 1.0625rem;
-  }
-  .writing h1 {
-    font-size: 2.5rem;
   }
 }
 @container app-layout (max-width: 56.25rem) {
@@ -427,7 +427,7 @@ header {
     margin-left: calc(-1 * var(--sidebar-width, 16.125rem));
   }
   .page-scroll {
-    padding: 2.1875rem 2.1875rem;
+    padding: 1.5rem 2.1875rem 2.1875rem;
   }
 }
 @container app-layout (max-width: 37.5rem) {
@@ -441,13 +441,13 @@ header {
     padding: 0 0.3125rem;
   }
   .page-scroll {
-    padding: 1.75rem 1.375rem;
+    padding: 1.5rem 1.375rem 1.75rem;
   }
   .writing {
     font-size: 0.875rem;
   }
   .writing h1 {
-    font-size: 1.8125rem;
+    font-size: 1.625rem;
   }
   .writing h2 {
     font-size: 1.25rem;
@@ -615,6 +615,7 @@ textarea::placeholder {
 }
 
 .file-row {
+  position: relative;
   display: flex;
   align-items: center;
   border-radius: 0.3125rem;
@@ -646,12 +647,12 @@ textarea::placeholder {
   margin-top: auto;
   flex-shrink: 0;
   display: flex;
-  justify-content: flex-start;
+  justify-content: space-between;
   gap: 0.25rem;
   align-items: center;
   padding: 0.75rem 0;
   color: var(--muted);
-  font-size: 0.75rem;
+  font-size: var(--sidebar-font-size);
 }
 .sidebar-controls button {
   gap: 0.375rem;
@@ -724,7 +725,7 @@ textarea::placeholder {
   flex: 1;
   min-width: 0;
   justify-content: flex-start;
-  font-size: 0.75rem;
+  font-size: var(--sidebar-font-size);
 }
 .workspace-name span {
   overflow: hidden;
@@ -742,7 +743,7 @@ textarea::placeholder {
 .folder-empty {
   margin: 0.25rem 0 0.625rem;
   color: var(--muted);
-  font-size: 0.6875rem;
+  font-size: var(--sidebar-font-size);
 }
 .workspace-empty {
   min-height: 65vh;
@@ -953,7 +954,7 @@ header {
 
 /* One root scale keeps typography, spacing, and controls proportional. */
 .writing {
-  font-size: 0.9375rem;
+  font-size: var(--body-font-size);
 }
 .app-zoom-setting {
   display: flex;
@@ -1056,6 +1057,7 @@ header {
 
 /* iOS keeps writing above the keyboard and clear of the camera and home indicator. */
 .ios-window {
+  --body-font-size: 1rem;
   --touch-target: max(2.75rem, 44px);
   position: relative;
   -webkit-tap-highlight-color: transparent;
@@ -1200,7 +1202,7 @@ header {
 }
 .ios-window .writing,
 .ios-window .source {
-  font-size: 1rem;
+  font-size: var(--body-font-size);
 }
 .app-zoom-range {
   align-items: center;
@@ -1315,10 +1317,6 @@ svg.lucide[width="32"] {
   gap: 0.25rem;
   align-items: center;
 }
-.mode-switch button[aria-pressed="true"] {
-  background: var(--selection);
-  color: var(--text);
-}
 .note-list {
   display: flex;
   flex-direction: column;
@@ -1352,19 +1350,31 @@ svg.lucide[width="32"] {
   border-radius: 0.375rem;
   font-size: 0.8125rem;
 }
+.note-search:focus-visible {
+  outline: none;
+}
 .note-tree {
   min-height: 0;
   overflow: auto;
 }
-.note-tree .note-root {
-  padding-left: 0.25rem;
+.note-tree .file-row {
+  margin-block: 0;
+}
+.note-tree .file-open,
+.note-tree .folder-row button {
+  min-height: var(--touch-target, 1.875rem);
+  padding-block: 0.25rem;
+}
+.note-tree .note-list-marker {
+  flex: 0 0 1rem;
+  text-align: center;
 }
 .note-tree .folder-select span {
   flex: 1;
   min-width: 0;
 }
 .note-search-status {
-  font-size: 0.75rem;
+  font-size: var(--sidebar-font-size);
   color: var(--muted);
   padding: 0.5rem;
 }
@@ -1379,7 +1389,7 @@ svg.lucide[width="32"] {
   background: var(--hover);
 }
 .ios-window .note-search {
-  font-size: 1rem;
+  font-size: var(--body-font-size);
 }
 .note-image {
   display: block;
@@ -1394,33 +1404,6 @@ svg.lucide[width="32"] {
 }
 .note-image.ProseMirror-selectednode {
   outline: 0.125rem solid var(--accent);
-}
-.inline-note-tag {
-  color: var(--accent);
-  background: var(--selection);
-  border-radius: 0.2rem;
-  cursor: pointer;
-}
-.tag-suggestions {
-  position: absolute;
-  bottom: 1.5rem;
-  z-index: 5;
-  display: flex;
-  flex-direction: column;
-  min-width: 12rem;
-  max-width: 80%;
-  padding: 0.375rem;
-  border: 0.0625rem solid var(--line);
-  border-radius: 0.5rem;
-  background: var(--paper);
-}
-.tag-suggestions button {
-  padding: 0.5rem;
-  justify-content: flex-start;
-  font-size: 0.8125rem;
-}
-.tag-suggestions [aria-selected="true"] {
-  background: var(--selection);
 }
 .revision-preview {
   max-height: 16rem;
@@ -1461,13 +1444,6 @@ svg.lucide[width="32"] {
 }
 .notes-mode .formatting {
   flex-wrap: wrap;
-}
-
-.note-menu > button {
-  width: 100%;
-  justify-content: flex-start;
-  padding: 0.5625rem 0.625rem;
-  font-size: 0.8125rem;
 }
 
 .selection-toolbar-anchor {
@@ -1565,4 +1541,97 @@ svg.lucide[width="32"] {
 .ios-window .image-node [data-resize-handle] {
   width: var(--touch-target);
   height: var(--touch-target);
+}
+
+.note-tags-popover {
+  position: fixed;
+  inset: auto;
+  margin: 0;
+  width: 20rem;
+  max-width: calc(100vw - 1rem);
+  max-height: calc(100dvh - 1rem);
+  overflow: auto;
+  padding: 0.875rem;
+  border: 0.0625rem solid var(--line);
+  border-radius: 0.5rem;
+  background: var(--overlay);
+  color: var(--text);
+  font-size: 0.8125rem;
+}
+.note-tags-heading,
+.note-tag-input-row,
+.note-tag-chip {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+.note-tags-heading {
+  justify-content: space-between;
+}
+.note-tags-popover button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2rem;
+  min-height: 2rem;
+  padding: 0.375rem;
+  border-radius: 0.25rem;
+}
+.note-tags-popover button:hover {
+  background: var(--hover);
+}
+.note-tag-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+  margin-block: 0.625rem;
+}
+.note-tag-chip {
+  background: var(--active);
+  border-radius: 0.375rem;
+  padding-left: 0.5rem;
+  max-width: 100%;
+}
+.note-tag-chip > span {
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+.note-tag-chip button {
+  flex-shrink: 0;
+}
+.note-tag-input-row {
+  margin-top: 0.375rem;
+}
+.note-tag-input-row input {
+  min-width: 0;
+  width: 100%;
+  padding: 0.5rem;
+  border: 0.0625rem solid var(--input-border);
+  border-radius: 0.25rem;
+  background: var(--paper);
+  color: var(--text);
+}
+.note-tag-suggestions {
+  display: flex;
+  flex-direction: column;
+  margin-top: 0.5rem;
+}
+.note-tag-suggestions button {
+  justify-content: flex-start;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+.note-tags-hint {
+  color: var(--muted);
+  font-size: 0.75rem;
+  line-height: 1.5;
+}
+@media (pointer: coarse) {
+  .note-tags-popover button {
+    min-width: max(2.75rem, 44px);
+    min-height: max(2.75rem, 44px);
+  }
+  .note-tag-input-row input {
+    font-size: 1rem;
+  }
 }

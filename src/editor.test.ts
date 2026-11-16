@@ -6,8 +6,10 @@ import { Markdown } from "@tiptap/markdown";
 import { TableKit } from "@tiptap/extension-table";
 import TaskList from "@tiptap/extension-task-list";
 import TaskItem from "@tiptap/extension-task-item";
-import { loadDocument } from "./editor";
+import { loadDocument, editMarkdown, editorMarkdown } from "./editor";
+import { NoteTags } from "./tag-extension";
 const extensions = [
+  NoteTags,
   StarterKit,
   Markdown,
   TableKit,
@@ -69,4 +71,109 @@ describe("Markdown document integrity", () => {
     expect(e.getHTML()).not.toContain("<script>");
     e.destroy();
   });
+});
+
+it("tag edits preserve selection and give each action its own undo step", () => {
+  const editor = new Editor({
+    extensions,
+    content: "A **bold** thought.",
+    contentType: "markdown",
+  });
+  editor.commands.setTextSelection({ from: 3, to: 7 });
+  const selection = editor.state.selection.toJSON();
+  const original = editor.getJSON();
+  editMarkdown(editor, editor.getMarkdown() + "\n\n#work/project");
+  expect(editor.state.selection.toJSON()).toEqual(selection);
+  expect(editor.getHTML()).toContain("<strong>bold</strong>");
+  const firstTag = editor.getJSON();
+  editMarkdown(editor, editor.getMarkdown() + " #meeting notes#");
+  editor.commands.undo();
+  expect(editor.getJSON()).toEqual(firstTag);
+  editor.commands.undo();
+  expect(editor.getJSON()).toEqual(original);
+  editor.commands.redo();
+  expect(editor.getJSON()).toEqual(firstTag);
+  editor.destroy();
+});
+
+it("keeps tags outside editable text, including select-all replacement and tag undo", () => {
+  const updates: string[] = [];
+  const editor = new Editor({
+    extensions,
+    onUpdate: ({ editor }) => updates.push(editorMarkdown(editor, true)),
+  });
+  loadDocument(
+    editor,
+    "# Heading\n\nBody #legacy\n\n#work/project #meeting notes#",
+    true,
+  );
+  expect(updates).toEqual([]);
+  expect(editor.getText()).not.toContain("#legacy");
+  expect(editor.getText()).not.toContain("#work/project");
+  expect(editor.state.doc.attrs.noteTags).toEqual([
+    "legacy",
+    "meeting notes",
+    "work/project",
+  ]);
+  editor.commands.selectAll();
+  editor.commands.insertContent("Replacement body");
+  expect(editorMarkdown(editor, true)).toBe(
+    "Replacement body\n\n#legacy #meeting notes# #work/project\n",
+  );
+  editor.commands.setTextSelection(4);
+  const selection = editor.state.selection.toJSON();
+  editMarkdown(editor, "Replacement body\n\n#work/project", true);
+  expect(editor.state.selection.toJSON()).toEqual(selection);
+  expect(editor.getText()).toBe("Replacement body");
+  expect(editorMarkdown(editor, true)).toBe(
+    "Replacement body\n\n#work/project\n",
+  );
+  editor.commands.undo();
+  expect(editorMarkdown(editor, true)).toContain("#meeting notes#");
+  expect(editor.getText()).toBe("Replacement body");
+  editor.commands.redo();
+  expect(editorMarkdown(editor, true)).not.toContain("#meeting notes#");
+  loadDocument(editor, "Document #work/project", false);
+  expect(editor.getText()).toBe("Document #work/project");
+  expect(editor.state.doc.attrs.noteTags).toBeNull();
+  editor.destroy();
+});
+
+it("preserves literal hashtags, code, links and image references while hiding legacy tags", () => {
+  const editor = new Editor({ extensions });
+  loadDocument(
+    editor,
+    "Literal \\#text and `#code` [#link](https://example.com)\n\n#hidden",
+    true,
+  );
+  expect(editor.getText()).toContain("Literal #text");
+  expect(editor.getText()).toContain("#code");
+  expect(editor.getText()).toContain("#link");
+  expect(editorMarkdown(editor, true)).toContain("\\#text");
+  expect(editorMarkdown(editor, true)).toContain("`#code`");
+  expect(editorMarkdown(editor, true)).toContain(
+    "[#link](https://example.com)",
+  );
+  loadDocument(editor, "", true);
+  editor.commands.insertContent("Typing #ordinary");
+  const saved = editorMarkdown(editor, true);
+  expect(saved).toBe("Typing \\#ordinary");
+  loadDocument(editor, saved, true);
+  expect(editor.getText()).toBe("Typing #ordinary");
+  expect(editor.state.doc.attrs.noteTags).toEqual([]);
+  editor.destroy();
+});
+
+it("supports tags on an otherwise empty note without exposing an editable tag line", () => {
+  const editor = new Editor({ extensions });
+  loadDocument(editor, "", true);
+  editMarkdown(editor, "#work\n", true);
+  expect(editor.getText()).toBe("");
+  expect(editorMarkdown(editor, true)).toBe("#work\n");
+  editor.commands.selectAll();
+  editor.commands.deleteSelection();
+  expect(editorMarkdown(editor, true)).toBe("#work\n");
+  editor.commands.insertContent("New body");
+  expect(editorMarkdown(editor, true)).toBe("New body\n\n#work\n");
+  editor.destroy();
 });

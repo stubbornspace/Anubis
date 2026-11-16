@@ -53,3 +53,48 @@ export function replaceTag(
   }
   return next;
 }
+
+// Add to the final tag-only line, leaving existing inline tags in place.
+// Removal is exact: removing work does not remove work/project.
+export function changeNoteTag(markdown: string, input: string, remove = false) {
+  const tag = input
+    .trim()
+    .replace(/^#/, "")
+    .replace(/#$/, "")
+    .trim()
+    .normalize("NFC");
+  const text = tagText(tag);
+  if (!tag || tagsOf(text).length !== 1 || tagsOf(text)[0] !== tag)
+    throw new Error(
+      "Enter a valid tag, such as work/project or meeting notes.",
+    );
+  const ranges = tagRanges(markdown);
+  if (remove) {
+    let next = markdown;
+    for (const range of ranges.reverse()) {
+      if (range.tag === tag)
+        next = next.slice(0, range.from) + next.slice(range.to);
+    }
+    return next;
+  }
+  if (ranges.some((range) => range.tag === tag)) return markdown;
+  const end = markdown.trimEnd();
+  const lineStart = end.lastIndexOf("\n") + 1;
+  let lastLine = end.slice(lineStart);
+  const lastTags = ranges.filter((range) => range.from >= lineStart);
+  for (const range of lastTags.slice().reverse())
+    lastLine =
+      lastLine.slice(0, range.from - lineStart) +
+      lastLine.slice(range.to - lineStart);
+  const separator = !end
+    ? ""
+    : lastTags.length && !lastLine.trim()
+      ? " "
+      : "\n\n";
+  const next = end + separator + text + "\n";
+  if (!tagsOf(next).includes(tag))
+    throw new Error(
+      "Close the unfinished code block or Markdown syntax before adding a tag.",
+    );
+  return next;
+}

@@ -49,3 +49,21 @@ The single-sidebar branch was built with CloudKit development signing and instal
 The Notes sidebar was corrected to match the Documents tree: expandable All Notes, tag/subtag folders, compact note file rows, remembered expansion, and arrow-key navigation. Untagged notes sit at the root; multi-tag notes appear in each direct tag folder. Search returns a deduplicated list across collapsed branches.
 
 Tree-layout validation: 68 Notes/mobile UI tests passed across Chromium/WebKit/iPhone/iPad, including nested hierarchy, keyboard navigation, persisted expansion, multi-tag membership, global search, and tag-scoped note creation. Frontend compilation and the signed physical-iOS build passed. The corrected tree build was installed on RazorCrest successfully; on-device visual/interaction confirmation remains with the user.
+
+## Tags popover
+
+- [x] Direct Tags toolbar button with removable chips, existing-tag suggestions, nested/multiword tag entry, and Escape/outside dismissal.
+- [x] Tags stay outside formatted editor text in undoable document attributes, while retaining Markdown source/export/sync compatibility. Legacy tags are read without rewriting on open; literal hashtags typed in formatted text are escaped, with no inline tag controls. Exact removal retains descendants and protected code/link text.
+- [x] Rich-text changes retain undo through editor transactions; source changes use the existing autosave controller.
+- [ ] Verify the Tags popover with the native iOS software keyboard on device. Mocked touch tests do not establish native keyboard behavior.
+
+## Shared navigation tree
+
+- [x] Documents and Notes share recursive rows, disclosure controls, indentation, and keyboard traversal through `src/sidebar-tree.tsx`.
+- [x] Mode adapters retain their data controllers, selection/creation behavior, expansion state, and search rules. File actions remain in the Documents adapter.
+- [x] Preserve theme colors, editor-sized sidebar text, the active left border, Notes dash markers, and native sidebar/header geometry.
+
+## Direct tag navigation
+
+- [x] Remove the All Notes wrapper; show tags/subtags and root-level untagged notes directly. Ignore the obsolete root-collapse preference without deleting it.
+- [x] Keep tag expansion, deduplicated search, keyboard traversal, and tag-scoped creation. Clicking the selected tag clears the creation destination; missing tags no longer affect new notes.

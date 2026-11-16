@@ -174,3 +174,57 @@ test("folder disclosure keeps the creation destination, and root selection creat
     ),
   ).toContain("At root.md");
 });
+
+test("shared tree keyboard navigation opens documents through the save controller", async ({
+  page,
+}) => {
+  await openWorkspace(page);
+  const notes = page.getByRole("button", { name: "Folder Notes", exact: true });
+  const nested = page.getByRole("button", {
+    name: "Folder Nested",
+    exact: true,
+  });
+  await notes.focus();
+  await page.keyboard.press("ArrowLeft");
+  await expect(notes).toHaveAttribute("aria-expanded", "false");
+  await page.keyboard.press("ArrowRight");
+  await expect(notes).toHaveAttribute("aria-expanded", "true");
+  await page.keyboard.press("ArrowRight");
+  await expect(nested).toBeFocused();
+  await page.keyboard.press("ArrowRight");
+  if (
+    (await nested.getAttribute("aria-expanded")) === "true" &&
+    (await nested.evaluate((el) => el === document.activeElement))
+  )
+    await page.keyboard.press("ArrowRight");
+  const thought = page.getByRole("button", { name: "Thought.md", exact: true });
+  await expect(thought).toBeFocused();
+  await page.keyboard.press("ArrowLeft");
+  await expect(nested).toBeFocused();
+  await page.keyboard.press("ArrowLeft");
+  await expect(nested).toHaveAttribute("aria-expanded", "false");
+  await page.keyboard.press("ArrowLeft");
+  await expect(notes).toBeFocused();
+  const empty = page.getByRole("button", { name: "Folder Empty", exact: true });
+  await empty.focus();
+  await page.keyboard.press("ArrowRight");
+  await expect(page.getByText("Empty folder", { exact: true })).toBeVisible();
+  await page.keyboard.press("ArrowRight");
+  await expect(empty).toBeFocused();
+  await page.keyboard.press("End");
+  await expect(
+    page.getByRole("button", { name: "Second.md", exact: true }),
+  ).toBeFocused();
+  await page.keyboard.press("Home");
+  await expect(notes).toBeFocused();
+  await page
+    .getByLabel("Markdown editor")
+    .fill("Pending text before tree navigation");
+  const second = page.getByRole("button", { name: "Second.md", exact: true });
+  await second.focus();
+  await page.keyboard.press("Enter");
+  await expect(page.getByLabel("Markdown editor")).toContainText("Second");
+  expect(
+    await page.evaluate(() => window.__nativeTest.read().files["Welcome.md"]),
+  ).toContain("Pending text before tree navigation");
+});

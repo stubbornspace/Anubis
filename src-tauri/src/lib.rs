@@ -366,6 +366,7 @@ enum LibraryRequest {
     Read { id: String },
     Create { markdown: String, tags: Vec<String> },
     Save { note: library::Note },
+    Delete { id: String, revision: i64 },
     Draft { note: library::Note },
     ClearDraft { id: String },
     GetSetting { key: String },
@@ -401,6 +402,10 @@ async fn library_call(
             LibraryRequest::Read { id } => serde_json::json!(db.read(&id)?),
             LibraryRequest::Create { markdown, tags } => {
                 serde_json::json!(db.create(markdown, tags)?)
+            }
+            LibraryRequest::Delete { id, revision } => {
+                db.delete(&dir, &id, revision)?;
+                serde_json::Value::Null
             }
             LibraryRequest::Save { note } => {
                 library::store_draft(&dir, &note)?;

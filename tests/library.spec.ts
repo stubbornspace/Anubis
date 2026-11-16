@@ -62,33 +62,44 @@ test("failed library saves block switching and recover after relaunch", async ({
     ),
   ).toBe(2);
 });
-test("nested tags, archive, trash and restore preserve note content", async ({
+test("tag folders and confirmed permanent deletion keep other notes", async ({
   page,
 }) => {
   await openLibrary(page);
   await page.getByLabel("Markdown editor").fill("# Tagged\n\n#work/project");
   await expect(page.getByRole("status")).toHaveText("Saved locally");
-  await page
-    .getByRole("button", { name: "Expand tag work", exact: true })
-    .click();
-  await page.getByRole("button", { name: "project", exact: true }).click();
-  await expect(page.locator(".note-card")).toHaveCount(1);
+  await page.getByRole("button", { name: "Tag work", exact: true }).click();
+  if (
+    await page
+      .getByRole("button", { name: "Expand tag work", exact: true })
+      .count()
+  )
+    await page
+      .getByRole("button", { name: "Expand tag work", exact: true })
+      .click();
+  await expect(page.locator(".note-row")).toHaveCount(1);
+  await page.getByRole("button", { name: "New note", exact: true }).click();
+  await page.getByLabel("Markdown editor").fill("# Keep this\n\n#work");
+  await expect(page.getByRole("status")).toHaveText("Saved locally");
+  await page.locator(".note-row").filter({ hasText: "Tagged" }).click();
+  await page.evaluate(() => {
+    (window as any).__nativeTest.confirm = false;
+  });
   await page.getByRole("button", { name: "Note actions", exact: true }).click();
-  await page.getByRole("button", { name: "Archive note", exact: true }).click();
-  await page
-    .getByRole("navigation", { name: "Note library" })
-    .getByRole("button", { name: /Archive/ })
-    .click();
-  await expect(page.locator(".note-card")).toHaveCount(1);
+  await page.getByRole("button", { name: "Delete note", exact: true }).click();
+  await expect(page.locator(".note-row")).toHaveCount(2);
+  await page.evaluate(() => {
+    (window as any).__nativeTest.confirm = true;
+  });
   await page.getByRole("button", { name: "Note actions", exact: true }).click();
-  await page.getByRole("button", { name: "Trash note", exact: true }).click();
-  await expect(page.getByLabel("Markdown editor")).toHaveAttribute(
-    "contenteditable",
-    "false",
-  );
-  await page.getByRole("button", { name: "Note actions", exact: true }).click();
-  await page.getByRole("button", { name: "Restore note", exact: true }).click();
-  await expect(page.getByLabel("Markdown editor")).toContainText("Tagged");
+  await page.getByRole("button", { name: "Delete note", exact: true }).click();
+  await expect(page.locator(".note-row")).toHaveCount(1);
+  await expect(page.getByLabel("Markdown editor")).toContainText("Keep this");
+  await page.reload();
+  await expect(page.locator(".note-row")).toHaveCount(1);
+  await expect(
+    page.getByRole("button", { name: "Tag work", exact: true }),
+  ).toHaveAttribute("aria-pressed", "true");
 });
 test("search includes text beyond the preview and native close saves notes", async ({
   page,
@@ -99,7 +110,7 @@ test("search includes text beyond the preview and native close saves notes", asy
     .fill("# Searchable\n\n" + "Long body ".repeat(50) + "needle");
   await expect(page.getByRole("status")).toHaveText("Saved locally");
   await page.getByLabel("Search notes", { exact: true }).fill("needle");
-  await expect(page.locator(".note-card")).toHaveCount(1);
+  await expect(page.locator(".note-row")).toHaveCount(1);
   await page.getByLabel("Markdown editor").fill("# Before quit");
   await page.evaluate(() =>
     (window as any).__nativeTest.emit("workspace-before-exit"),
@@ -142,7 +153,7 @@ test("images keep stable attachment references after reopening", async ({
   ).toContain("anubis-asset:");
 });
 
-test("tag autocomplete and renaming keep Markdown and filters consistent", async ({
+test("tags are edited in notes and update the navigation tree", async ({
   page,
 }) => {
   await openLibrary(page);
@@ -158,21 +169,27 @@ test("tag autocomplete and renaming keep Markdown and filters consistent", async
     "#work/project",
   );
   await expect(page.getByRole("status")).toHaveText("Saved locally");
-  await page
-    .getByRole("button", { name: "Edit tag work", exact: true })
-    .click();
-  await page.getByLabel("Tag name", { exact: true }).fill("office");
-  await page.getByRole("button", { name: "Rename", exact: true }).click();
-  await expect(page.getByLabel("Markdown editor")).toContainText(
-    "#office/project",
-  );
+  await expect(page.getByRole("button", { name: /^Edit tag / })).toHaveCount(0);
+  await page.getByLabel("Markdown editor").fill("# Updated\n\n#office/project");
+  await expect(page.getByRole("status")).toHaveText("Saved locally");
+  await expect(
+    page.getByRole("button", { name: "Tag office", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Tag work", exact: true }),
+  ).toBeVisible();
   expect(
     await page.evaluate(() =>
       (window as any).__nativeTest
         .read()
-        .library.notes.every((n: any) => n.tags.includes("office/project")),
+        .library.notes.some((n: any) => n.tags.includes("work/project")),
     ),
   ).toBe(true);
+  await page.getByLabel("Markdown editor").fill("# Updated");
+  await expect(page.getByRole("status")).toHaveText("Saved locally");
+  await expect(
+    page.getByRole("button", { name: "Tag office", exact: true }),
+  ).toHaveCount(0);
 });
 test("note history restores a version while keeping the newer revision", async ({
   page,
@@ -216,7 +233,8 @@ test("sync failure never reports synced or prevents local saving", async ({
     .getByRole("button", { name: "Close settings", exact: true })
     .click();
   await page.getByLabel("Markdown editor").fill("# Saved offline");
-  await expect(page.getByRole("status")).toHaveText("Saved locally");
+  await expect(page.getByRole("status")).toContainText("Saved locally ·");
+  await expect(page.getByRole("status")).toHaveCSS("opacity", "1");
 });
 
 test("sync without remote edits preserves editor undo history", async ({
@@ -238,7 +256,9 @@ test("sync without remote edits preserves editor undo history", async ({
   );
 });
 
-test("editor sidebar toggle collapses both Notes columns", async ({ page }) => {
+test("editor sidebar toggle collapses the single Notes sidebar", async ({
+  page,
+}) => {
   await openLibrary(page);
   const toggle = page.getByRole("button", {
     name: "Toggle sidebar",
@@ -252,11 +272,12 @@ test("editor sidebar toggle collapses both Notes columns", async ({ page }) => {
   ).toHaveCount(0);
   await toggle.click();
   await expect(page.locator(".sidebar")).toHaveAttribute("inert", "");
-  await expect(page.locator(".note-list-container")).toBeHidden();
+  await expect(page.getByLabel("Search notes")).not.toBeInViewport();
   await expect(toggle).toHaveAttribute("aria-expanded", "false");
   await toggle.click();
   await expect(page.locator(".sidebar")).toBeVisible();
-  await expect(page.locator(".note-list-container")).toBeVisible();
+  await expect(page.getByLabel("Search notes")).toBeInViewport();
+  await expect(page.locator(".note-list-container")).toHaveCount(0);
   await expect(toggle).toHaveAttribute("aria-expanded", "true");
 });
 
@@ -497,7 +518,7 @@ for (const fails of [false, true]) {
     await expect(editor).toContainText("Written during sync");
     await page.evaluate(() => (window as any).__nativeTest.finishSync());
     await expect(page.locator(".saved[role=status]")).toHaveText(
-      "Saved locally",
+      fails ? "Saved locally · iCloud error" : "Saved locally · Upload pending",
     );
     await expect(editor).toContainText("Written during sync");
     await page.reload();
@@ -506,3 +527,193 @@ for (const fails of [false, true]) {
     );
   });
 }
+
+test("single sidebar order and resizing work in both palettes and appearances", async ({
+  page,
+}) => {
+  await openLibrary(page);
+  for (const palette of ["The Blues", "Atom One"]) {
+    for (const appearance of ["Light", "Dark"]) {
+      await page.getByRole("button", { name: "Settings", exact: true }).click();
+      await page.getByRole("radio", { name: palette, exact: true }).check();
+      await page.getByRole("radio", { name: appearance, exact: true }).check();
+      await page.getByLabel("Close settings", { exact: true }).click();
+      const search = (await page
+        .getByLabel("Search notes", { exact: true })
+        .boundingBox())!;
+      const add = (await page
+        .getByLabel("New note", { exact: true })
+        .boundingBox())!;
+      const filter = (await page
+        .getByRole("button", { name: "All Notes", exact: true })
+        .boundingBox())!;
+      expect(
+        Math.abs(search.y + search.height / 2 - add.y - add.height / 2),
+      ).toBeLessThan(2);
+      expect(filter.y).toBeGreaterThanOrEqual(search.y + search.height);
+      expect(await page.locator(".note-list-container").count()).toBe(0);
+      const sidebar = (await page.locator(".sidebar").boundingBox())!;
+      const list = (await page.locator(".note-list").boundingBox())!;
+      expect(list.x).toBeGreaterThanOrEqual(sidebar.x);
+      expect(list.x + list.width).toBeLessThanOrEqual(
+        sidebar.x + sidebar.width,
+      );
+    }
+  }
+  const sidebar = page.locator(".sidebar");
+  const before = (await sidebar.boundingBox())!.width;
+  await page.getByRole("separator", { name: "Resize sidebar" }).focus();
+  await page.keyboard.press("ArrowRight");
+  await expect
+    .poll(async () => (await sidebar.boundingBox())!.width)
+    .toBeGreaterThan(before);
+});
+
+test("failed deletion keeps the note and its editor available", async ({
+  page,
+}) => {
+  await openLibrary(page);
+  await page.getByLabel("Markdown editor").fill("Keep if deletion fails");
+  await expect(page.getByRole("status")).toHaveText("Saved locally");
+  await page.evaluate(() => {
+    (window as any).__nativeTest.failDelete = true;
+  });
+  await page.getByLabel("Note actions", { exact: true }).click();
+  await page.getByRole("button", { name: "Delete note", exact: true }).click();
+  await expect(page.getByRole("alert")).toContainText("Note deletion failed");
+  await expect(page.getByLabel("Markdown editor")).toContainText(
+    "Keep if deletion fails",
+  );
+  await expect(page.locator(".note-row")).toHaveCount(1);
+});
+
+test("All Notes expands into nested tag folders and file rows with keyboard navigation", async ({
+  page,
+}) => {
+  await openLibrary(page);
+  await page.getByLabel("Markdown editor").fill("# Loose note");
+  await expect(page.getByRole("status")).toHaveText("Saved locally");
+  await page.getByLabel("New note", { exact: true }).click();
+  await page
+    .getByLabel("Markdown editor")
+    .fill("# Nested note\n\n#work/project/client");
+  await expect(page.getByRole("status")).toHaveText("Saved locally");
+  await expect(
+    page
+      .getByRole("group", {
+        name: "Notes tagged work/project/client",
+        exact: true,
+      })
+      .getByRole("button", { name: "Nested note", exact: true }),
+  ).toBeVisible();
+  const root = page.getByRole("group", { name: "All Notes", exact: true });
+  await expect(root.locator(":scope > .note-row")).toHaveText("Loose note");
+  const project = page.getByRole("button", {
+    name: "Tag work/project",
+    exact: true,
+  });
+  await project.focus();
+  await page.keyboard.press("ArrowLeft");
+  await expect(project).toHaveAttribute("aria-expanded", "false");
+  await expect(
+    page.getByRole("button", { name: "Tag work/project/client", exact: true }),
+  ).toHaveCount(0);
+  await page.keyboard.press("ArrowRight");
+  await page.keyboard.press("ArrowRight");
+  await expect(
+    page.getByRole("button", { name: "Tag work/project/client", exact: true }),
+  ).toBeFocused();
+  await page.keyboard.press("ArrowDown");
+  await expect(
+    page.getByRole("button", { name: "Nested note", exact: true }),
+  ).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(page.getByLabel("Markdown editor")).toContainText("Nested note");
+  await page
+    .getByRole("button", { name: "Collapse tag work", exact: true })
+    .click();
+  await page.reload();
+  await expect(
+    page.getByRole("button", { name: "Expand tag work", exact: true }),
+  ).toBeVisible();
+  await page
+    .getByRole("button", { name: "Collapse All Notes", exact: true })
+    .click();
+  await page.reload();
+  await expect(
+    page.getByRole("button", { name: "Expand All Notes", exact: true }),
+  ).toBeVisible();
+  await expect(page.locator(".note-row")).toHaveCount(0);
+});
+
+test("multi-tag notes appear in each folder while search finds them once across collapsed branches", async ({
+  page,
+}) => {
+  await openLibrary(page);
+  await page
+    .getByLabel("Markdown editor")
+    .fill("# Shared note\n\n#work/project #personal");
+  await expect(page.getByRole("status")).toHaveText("Saved locally");
+  await expect(
+    page
+      .getByRole("group", { name: "Notes tagged work/project", exact: true })
+      .getByRole("button", { name: "Shared note", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page
+      .getByRole("group", { name: "Notes tagged personal", exact: true })
+      .getByRole("button", { name: "Shared note", exact: true }),
+  ).toBeVisible();
+  await page
+    .getByRole("button", { name: "Collapse All Notes", exact: true })
+    .click();
+  await page.getByLabel("Search notes", { exact: true }).fill("Shared");
+  await expect(page.locator(".note-row")).toHaveCount(1);
+  await page.getByLabel("Search notes", { exact: true }).fill("");
+  await expect(
+    page.getByRole("button", { name: "Expand All Notes", exact: true }),
+  ).toBeVisible();
+  await page
+    .getByRole("button", { name: "Expand All Notes", exact: true })
+    .click();
+  const personal = page.getByRole("button", {
+    name: "Tag personal",
+    exact: true,
+  });
+  await personal.click();
+  await page.getByLabel("New note", { exact: true }).click();
+  await expect(page.getByLabel("Markdown editor")).toContainText("#personal");
+  await expect(
+    page
+      .getByRole("group", { name: "Notes tagged personal", exact: true })
+      .locator(".note-row"),
+  ).toHaveCount(2);
+});
+
+test("successful save status is quiet without shifting header controls", async ({
+  page,
+}) => {
+  await openWorkspace(page);
+  for (const mode of ["Documents", "Notes"]) {
+    if (mode === "Notes") {
+      await page.getByRole("button", { name: "Notes", exact: true }).click();
+      await page
+        .getByRole("button", { name: "New note", exact: true })
+        .first()
+        .click();
+    }
+    await page.getByLabel("Markdown editor").fill("# Quiet save");
+    const status = page.locator(".saved[role=status]");
+    await expect(status).toHaveText(
+      mode === "Notes" ? "Saved locally" : "Saved",
+    );
+    await expect(status).toHaveCSS("opacity", "0");
+    const controls = page.getByRole("group", { name: "Editor controls" });
+    const before = await controls.boundingBox();
+    await status.evaluate((el) => el.removeAttribute("data-quiet"));
+    await expect(status).toHaveCSS("opacity", "1");
+    const after = await controls.boundingBox();
+    expect(after!.x).toBe(before!.x);
+    expect(after!.y).toBe(before!.y);
+  }
+});

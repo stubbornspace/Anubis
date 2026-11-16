@@ -1,5 +1,5 @@
 import { createPortal } from "react-dom";
-import { MoreHorizontal, Pin, Archive, Trash2, Undo2 } from "lucide-react";
+import { MoreHorizontal, Trash2 } from "lucide-react";
 import { interfaceScale } from "./platform";
 import { useId, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
@@ -11,9 +11,9 @@ export function LibraryTools({ busy }: { busy: boolean }) {
     <fieldset>
       <legend>Note library</legend>
       <p>
-        Notes save on this device. A library backup includes images, Trash,
-        drafts, and revision history. Importing a backup adds copies and keeps
-        existing notes.
+        Notes save on this device. A library backup includes images, drafts, and
+        revision history. Importing a backup adds copies and keeps existing
+        notes.
       </p>
       <div className="library-dialog-actions">
         <button disabled={busy} onClick={() => void library.export()}>
@@ -220,7 +220,7 @@ export function NoteActions({ note, busy }: { note: Note; busy: boolean }) {
       >
         <NoteHistory
           id={note.id}
-          busy={busy || note.trashed}
+          busy={busy}
           onActivate={close}
           onClose={focusTrigger}
         />
@@ -234,35 +234,24 @@ export function NoteActions({ note, busy }: { note: Note; busy: boolean }) {
           Export
         </button>
         <button
-          disabled={busy || note.trashed}
-          onClick={() => {
-            close();
-            void library.change({ pinned: !note.pinned });
-          }}
-        >
-          <Pin size={16} />
-          {note.pinned ? "Unpin note" : "Pin note"}
-        </button>
-        <button
-          disabled={busy || note.trashed}
-          onClick={() => {
-            close();
-            void library.change({ archived: !note.archived });
-          }}
-        >
-          <Archive size={16} />
-          {note.archived ? "Unarchive note" : "Archive note"}
-        </button>
-        <button
           disabled={busy}
-          className={note.trashed ? undefined : "danger"}
+          className="danger"
           onClick={() => {
             close();
-            void library.change({ trashed: !note.trashed });
+            void library.remove().then(() =>
+              requestAnimationFrame(() => {
+                if (!trigger.current?.isConnected)
+                  document
+                    .querySelector<HTMLButtonElement>(
+                      'button[aria-label="Toggle sidebar"]',
+                    )
+                    ?.focus();
+              }),
+            );
           }}
         >
-          {note.trashed ? <Undo2 size={16} /> : <Trash2 size={16} />}
-          {note.trashed ? "Restore note" : "Trash note"}
+          <Trash2 size={16} />
+          Delete note
         </button>
       </div>
     </span>

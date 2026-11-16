@@ -46,7 +46,7 @@ import { ImageTools } from "./image-tools";
 import { SelectionToolbar } from "./selection-toolbar";
 import { NoteImage } from "./note-image";
 import { library } from "./library";
-import { LibrarySidebar, NoteList, type LibraryView } from "./library-ui";
+import { NoteList, type LibraryView } from "./library-ui";
 import { loadDocument } from "./editor";
 import { isIOS, compactNavigation, interfaceScale } from "./platform";
 import "./ocean.css";
@@ -282,16 +282,15 @@ function App() {
     localStorage.getItem("kronos.mode") === "notes" ? "notes" : "documents",
   );
   const notesMode = mode === "notes";
-  const [libraryView, setLibraryView] = useState<LibraryView>(
-    () => (localStorage.getItem("kronos.libraryView") || "all") as LibraryView,
-  );
+  const [libraryView, setLibraryView] = useState<LibraryView>(() => {
+    const saved = localStorage.getItem("kronos.libraryView");
+    return saved?.startsWith("tag:") ? (saved as LibraryView) : "all";
+  });
   const [syncEnabled, setSyncEnabled] = useState(
     () => localStorage.getItem("kronos.notesSync") === "true",
   );
   const [switchingMode, setSwitchingMode] = useState(false);
   const switchingRef = useRef(false);
-  const [noteListVisible, setNoteListVisible] = useState(true);
-  const [noteDetail, setNoteDetail] = useState(false);
   const note = noteState.note;
   const state = notesMode
     ? {
@@ -330,8 +329,7 @@ function App() {
       setMode(next);
       localStorage.setItem("kronos.mode", next);
       if (next === "notes") {
-        setNoteListVisible(true);
-        if (window.innerWidth / interfaceScale() <= 1000) setSidebar(false);
+        setSidebar(true);
       }
     } finally {
       switchingRef.current = false;
@@ -356,14 +354,10 @@ function App() {
     if (!(await library.save())) return;
     setLibraryView(view);
     localStorage.setItem("kronos.libraryView", view);
-    setNoteListVisible(true);
-    setNoteDetail(false);
-    if (window.innerWidth / interfaceScale() <= 1000) setSidebar(false);
   };
   const openNote = async (id: string) => {
     if (await library.select(id)) {
-      setNoteDetail(true);
-      if (window.innerWidth / interfaceScale() <= 1000) setSidebar(false);
+      if (compactNavigation()) setSidebar(false);
     }
   };
   const createNote = async () => {
@@ -372,10 +366,7 @@ function App() {
         libraryView.startsWith("tag:") ? libraryView.slice(4) : undefined,
       )
     ) {
-      if (libraryView === "archive" || libraryView === "trash")
-        setLibraryView("all");
-      setNoteDetail(true);
-      if (window.innerWidth / interfaceScale() <= 1000) setSidebar(false);
+      if (compactNavigation()) setSidebar(false);
     }
   };
   const doc = state.doc || { path: "", name: "", markdown: "", version: "" };
@@ -436,16 +427,7 @@ function App() {
     ),
     [modal, setModal] = useState<FileModal | null>(null),
     [name, setName] = useState("");
-  const toggleSidebar = () => {
-    const expanded = notesMode
-      ? sidebar || (noteListVisible && !noteDetail)
-      : sidebar;
-    setSidebar(!expanded);
-    if (notesMode) {
-      setNoteListVisible(!expanded);
-      setNoteDetail(expanded);
-    }
-  };
+  const toggleSidebar = () => setSidebar((value) => !value);
   const [documentSidebarWidth, setDocumentSidebarWidth] = useState(() => {
     const saved = Number(localStorage.getItem("kronos.sidebarWidth"));
     return Number.isFinite(saved) && saved >= 220 && saved <= 480 ? saved : 258;
@@ -737,14 +719,7 @@ function App() {
       ? library.state.note?.id
       : workspace.state.doc?.path;
     const root = workspace.state.workspace?.root;
-    if (
-      !selected ||
-      state.busy ||
-      plainText ||
-      source ||
-      (insertingNote && library.state.note?.trashed)
-    )
-      return;
+    if (!selected || state.busy || plainText || source) return;
     for (const file of files) {
       try {
         if (file.size > 20 * 1024 * 1024)
@@ -806,18 +781,8 @@ function App() {
     );
   }, [doc.path, state.revision, editor]);
   useEffect(() => {
-    editor?.setEditable(
-      !!state.doc && !state.busy && !plainText && !(notesMode && note?.trashed),
-      false,
-    );
-  }, [
-    editor,
-    state.doc?.path,
-    state.busy,
-    plainText,
-    notesMode,
-    note?.trashed,
-  ]);
+    editor?.setEditable(!!state.doc && !state.busy && !plainText, false);
+  }, [editor, state.doc?.path, state.busy, plainText, notesMode]);
   useEffect(() => {
     document.documentElement.dataset.theme = dark ? "dark" : "light";
     const icon = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
@@ -917,6 +882,20 @@ function App() {
   });
   const cloud = state.doc?.cloud;
   const cloudConflict = !!cloud?.conflicts;
+  const quietSaveStatus =
+    !state.opening &&
+    !state.conflict &&
+    !state.error &&
+    !state.saving &&
+    !state.dirty &&
+    !cloudConflict &&
+    !cloud?.error &&
+    (!cloud || cloud.uploaded) &&
+    !(
+      notesMode &&
+      syncEnabled &&
+      ["pending", "syncing", "error"].includes(noteState.sync)
+    );
   const errorMessage = (state.error || cloudConflict || cloud?.error) && (
     <div className="action-error" role="alert">
       <span>
@@ -992,7 +971,7 @@ function App() {
         if (event.key === "Escape" || event.key === "Tab") revealControls();
       }}
       onPointerDownCapture={revealControls}
-      className={`app ${notesMode ? "notes-mode" : "documents-mode"} ${noteListVisible ? "" : "no-note-list"} ${noteDetail ? "note-detail" : ""} ${resizing ? "resizing-sidebar" : ""} ${writing ? "focus-writing" : ""} ${isIOS ? "ios-window" : navigator.platform.startsWith("Mac") ? "mac-window" : ""} ${sidebar ? "" : "no-sidebar"} ${focusMode && !source && !plainText && state.doc ? "focus-mode" : ""}`}
+      className={`app ${notesMode ? "notes-mode" : "documents-mode"} ${resizing ? "resizing-sidebar" : ""} ${writing ? "focus-writing" : ""} ${isIOS ? "ios-window" : navigator.platform.startsWith("Mac") ? "mac-window" : ""} ${sidebar ? "" : "no-sidebar"} ${focusMode && !source && !plainText && state.doc ? "focus-mode" : ""}`}
     >
       <aside id="sidebar" className="sidebar" inert={!sidebar || writing}>
         <div
@@ -1020,10 +999,12 @@ function App() {
           )}
         </div>
         {notesMode ? (
-          <LibrarySidebar
+          <NoteList
             state={noteState}
             view={libraryView}
             select={(view) => void selectLibraryView(view)}
+            onOpen={(id) => void openNote(id)}
+            onCreate={() => void createNote()}
           />
         ) : (
           <>
@@ -1198,20 +1179,6 @@ function App() {
           onClick={() => setSidebar(false)}
         />
       )}
-      {notesMode && (
-        <div
-          id="note-list"
-          className="note-list-container"
-          inert={writing || !noteListVisible}
-        >
-          <NoteList
-            state={noteState}
-            view={libraryView}
-            onOpen={(id) => void openNote(id)}
-            onCreate={() => void createNote()}
-          />
-        </div>
-      )}
       {editor &&
         !source &&
         !plainText &&
@@ -1232,12 +1199,8 @@ function App() {
           <div className="breadcrumbs">
             <button
               aria-label="Toggle sidebar"
-              aria-expanded={
-                notesMode
-                  ? sidebar || (noteListVisible && !noteDetail)
-                  : sidebar
-              }
-              aria-controls={notesMode ? "sidebar note-list" : "sidebar"}
+              aria-expanded={sidebar}
+              aria-controls="sidebar"
               title="Toggle sidebar (⌘\\)"
               onClick={toggleSidebar}
             >
@@ -1249,6 +1212,7 @@ function App() {
           </div>
           <div className="header-actions">
             <span
+              data-quiet={quietSaveStatus || undefined}
               className={`saved ${state.conflict || cloudConflict || cloud?.error ? "danger" : ""}`}
               role="status"
             >
@@ -1271,9 +1235,14 @@ function App() {
                               : notesMode
                                 ? noteState.sync === "synced"
                                   ? "Synced"
-                                  : noteState.sync === "syncing"
+                                  : syncEnabled && noteState.sync === "syncing"
                                     ? "Syncing…"
-                                    : "Saved locally"
+                                    : syncEnabled && noteState.sync === "error"
+                                      ? "Saved locally · iCloud error"
+                                      : syncEnabled &&
+                                          noteState.sync === "pending"
+                                        ? "Saved locally · Upload pending"
+                                        : "Saved locally"
                                 : "Saved"
                   : "")}
             </span>
@@ -1350,13 +1319,7 @@ function App() {
                   <button
                     aria-label="Insert image"
                     title="Insert image"
-                    disabled={
-                      state.busy ||
-                      !state.doc ||
-                      (notesMode && !!note?.trashed) ||
-                      source ||
-                      plainText
-                    }
+                    disabled={state.busy || !state.doc || source || plainText}
                     onClick={() => imageInput.current?.click()}
                   >
                     <ImagePlus size={16} />
@@ -1567,7 +1530,7 @@ function App() {
             <textarea
               className="source writing"
               aria-label={plainText ? "Text editor" : "Markdown source"}
-              disabled={state.busy || (notesMode && note?.trashed)}
+              disabled={state.busy}
               spellCheck={false}
               autoCapitalize="none"
               autoCorrect="off"

@@ -59,6 +59,8 @@ pub struct Note {
     pub archived: bool,
     pub trashed: bool,
     pub tags: Vec<String>,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub deleted: bool,
 }
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -108,9 +110,13 @@ impl From<Note> for Summary {
         }
     }
 }
+fn is_false(value: &bool) -> bool {
+    !value
+}
 fn row(r: &rusqlite::Row<'_>) -> rusqlite::Result<Note> {
     let tags: String = r.get(8)?;
     Ok(Note {
+        deleted: false,
         id: r.get(0)?,
         markdown: r.get(1)?,
         revision: r.get(2)?,
@@ -140,7 +146,7 @@ impl Library {
         let version: i64 = db
             .query_row("PRAGMA user_version", [], |r| r.get(0))
             .map_err(error)?;
-        if version > 2 {
+        if version > 3 {
             return Err(
                 "This library was created by a newer Anubis version. Update Anubis to open it."
                     .into(),
@@ -159,6 +165,9 @@ impl Library {
         }
         if version < 2 {
             db.execute_batch("BEGIN IMMEDIATE; CREATE TABLE cloud_records(id TEXT PRIMARY KEY, fields TEXT NOT NULL, snapshot TEXT NOT NULL); PRAGMA user_version=2; COMMIT;").map_err(error)?;
+        }
+        if version < 3 {
+            db.execute_batch("BEGIN IMMEDIATE; CREATE TABLE deleted_notes(id TEXT PRIMARY KEY, snapshot TEXT NOT NULL); PRAGMA user_version=3; COMMIT;").map_err(error)?;
         }
         Ok(Self { db })
     }
@@ -185,6 +194,7 @@ impl Library {
     pub fn create(&mut self, markdown: String, tags: Vec<String>) -> Result<Note, String> {
         validate(&markdown, &tags)?;
         let n = Note {
+            deleted: false,
             id: uuid::Uuid::new_v4().to_string(),
             markdown,
             tags,
@@ -218,6 +228,9 @@ impl Library {
     }
     pub fn save(&mut self, mut n: Note) -> Result<Note, String> {
         id_valid(&n.id)?;
+        if n.deleted {
+            return Err("Use Delete note to permanently delete a note.".into());
+        }
         validate(&n.markdown, &n.tags)?;
         let tx = self
             .db
@@ -634,6 +647,44 @@ impl Library {
     }
 }
 
+fn asset_ids(text: &str) -> Vec<String> {
+    text.split("anubis-asset:")
+        .skip(1)
+        .filter_map(|p| {
+            let id: String = p.chars().take_while(|c| c.is_ascii_hexdigit()).collect();
+            (id.len() == 64).then_some(id)
+        })
+        .collect()
+}
+fn tombstone(db: &Connection, note: &mut Note, pending: bool) -> Result<(), String> {
+    note.markdown.clear();
+    note.tags.clear();
+    note.pinned = false;
+    note.archived = false;
+    note.trashed = true;
+    note.deleted = true;
+    // No creation/edit timestamps or note content are retained for deletion.
+    note.created = 0;
+    note.updated = 0;
+    db.execute("DELETE FROM notes WHERE id=?", [&note.id])
+        .map_err(error)?;
+    db.execute("DELETE FROM revisions WHERE note_id=?", [&note.id])
+        .map_err(error)?;
+    db.execute(
+        "UPDATE cloud_records SET snapshot='{}' WHERE id=?",
+        [&note.id],
+    )
+    .map_err(error)?;
+    db.execute("INSERT INTO deleted_notes VALUES(?,?) ON CONFLICT(id) DO UPDATE SET snapshot=excluded.snapshot",params![note.id,serde_json::to_string(note).map_err(error)?]).map_err(error)?;
+    if pending {
+        db.execute("INSERT INTO outbox VALUES(?,?) ON CONFLICT(id) DO UPDATE SET revision=excluded.revision",params![note.id,note.revision]).map_err(error)?;
+    } else {
+        db.execute("DELETE FROM outbox WHERE id=?", [&note.id])
+            .map_err(error)?;
+    }
+    Ok(())
+}
+
 #[derive(Serialize, Deserialize)]
 pub struct CloudRecord {
     pub note: Note,
@@ -642,8 +693,64 @@ pub struct CloudRecord {
 }
 impl Library {
     pub fn pending(&self) -> Result<Vec<Note>, String> {
-        self.db.prepare("SELECT n.id,n.markdown,n.revision,n.created,n.updated,n.pinned,n.archived,n.trashed,n.tags FROM notes n JOIN outbox o ON n.id=o.id ORDER BY n.updated LIMIT 5")
-            .map_err(error)?.query_map([],row).map_err(error)?.map(|r|r.map_err(error)).collect()
+        let mut pending: Vec<Note> = self
+            .db
+            .prepare("SELECT d.snapshot FROM deleted_notes d JOIN outbox o ON d.id=o.id LIMIT 5")
+            .map_err(error)?
+            .query_map([], |r| r.get::<_, String>(0))
+            .map_err(error)?
+            .map(|r| serde_json::from_str(&r.map_err(error)?).map_err(error))
+            .collect::<Result<_, _>>()?;
+        let notes = self.db.prepare("SELECT n.id,n.markdown,n.revision,n.created,n.updated,n.pinned,n.archived,n.trashed,n.tags FROM notes n JOIN outbox o ON n.id=o.id ORDER BY n.updated LIMIT 5")
+            .map_err(error)?.query_map([],row).map_err(error)?.map(|r|r.map_err(error)).collect::<Result<Vec<_>,_>>()?;
+        pending.extend(notes.into_iter().take(5 - pending.len()));
+        Ok(pending)
+    }
+    pub fn delete(&mut self, dir: &Path, id: &str, revision: i64) -> Result<(), String> {
+        let mut note = self.read(id)?;
+        if note.revision != revision {
+            return Err("This note changed before deletion. Reopen it and try again.".into());
+        }
+        let mut candidates = self.deletion_assets(id)?;
+        for draft in drafts(dir)?.into_iter().filter(|n| n.id == id) {
+            candidates.extend(asset_ids(&draft.markdown));
+        }
+        let tx = self
+            .db
+            .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+            .map_err(error)?;
+        note.revision = note
+            .revision
+            .checked_add(1)
+            .ok_or("Note revision limit reached.")?;
+        tombstone(&tx, &mut note, true)?;
+        tx.commit().map_err(error)?;
+        clear_draft(dir, id)?;
+        let _ = self.clean_deleted_assets(dir, candidates);
+        Ok(())
+    }
+    fn deletion_assets(&self, id: &str) -> Result<Vec<String>, String> {
+        let text: Vec<String> = self.db.prepare("SELECT markdown FROM notes WHERE id=?1 UNION ALL SELECT snapshot FROM revisions WHERE note_id=?1 UNION ALL SELECT snapshot FROM cloud_records WHERE id=?1")
+            .map_err(error)?.query_map([id],|r|r.get(0)).map_err(error)?.collect::<Result<_,_>>().map_err(error)?;
+        Ok(text.iter().flat_map(|s| asset_ids(s)).collect())
+    }
+    fn clean_deleted_assets(&self, dir: &Path, candidates: Vec<String>) -> Result<(), String> {
+        // Only consider this deleted note's assets; retain shared images and all
+        // references in surviving history, cloud bases and recovery drafts.
+        let retained: Vec<String> = self.db.prepare("SELECT markdown FROM notes UNION ALL SELECT snapshot FROM revisions UNION ALL SELECT snapshot FROM cloud_records")
+            .map_err(error)?.query_map([],|r|r.get(0)).map_err(error)?.collect::<Result<_,_>>().map_err(error)?;
+        let drafts = drafts(dir)?;
+        for id in candidates {
+            if retained.iter().any(|s| s.contains(&id))
+                || drafts.iter().any(|n| n.markdown.contains(&id))
+            {
+                continue;
+            }
+            // An orphaned image is safe to retry on a later deletion; an I/O
+            // failure must not make an already committed deletion look unsaved.
+            let _ = fs::remove_file(dir.join("attachments").join(&id));
+        }
+        Ok(())
     }
     pub fn cloud_fields(&self, id: &str) -> Result<String, String> {
         Ok(self
@@ -682,6 +789,9 @@ impl Library {
         for record in &records {
             id_valid(&record.note.id)?;
             validate(&record.note.markdown, &record.note.tags)?;
+            if record.note.deleted {
+                continue;
+            }
             for (id, encoded) in &record.assets {
                 let bytes = base64::engine::general_purpose::STANDARD
                     .decode(encoded)
@@ -692,12 +802,71 @@ impl Library {
                 put_asset(dir, &bytes)?;
             }
         }
+        let mut candidates = vec![];
+        for record in &records {
+            if record.note.deleted {
+                candidates.extend(self.deletion_assets(&record.note.id)?);
+            }
+        }
         let tx = self
             .db
             .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
             .map_err(error)?;
         let mut conflicts = 0;
         for record in records {
+            let deleted: Option<String> = tx
+                .query_row(
+                    "SELECT snapshot FROM deleted_notes WHERE id=?",
+                    [&record.note.id],
+                    |r| r.get(0),
+                )
+                .optional()
+                .map_err(error)?;
+            if record.note.deleted || deleted.is_some() {
+                if record.note.deleted && deleted.is_none() {
+                    // Preserve locally pending text under a NEW identity, never
+                    // resurrect the remotely deleted note. Existing drafts stay
+                    // available for explicit recovery as well.
+                    let old: Option<Note> = tx.query_row("SELECT id,markdown,revision,created,updated,pinned,archived,trashed,tags FROM notes WHERE id=?", [&record.note.id], row).optional().map_err(error)?;
+                    let pending: bool = tx
+                        .query_row(
+                            "SELECT EXISTS(SELECT 1 FROM outbox WHERE id=?)",
+                            [&record.note.id],
+                            |r| r.get(0),
+                        )
+                        .map_err(error)?;
+                    if let Some(old) = old.filter(|_| pending) {
+                        let id = uuid::Uuid::new_v4().to_string();
+                        tx.execute(
+                            "INSERT INTO notes VALUES(?,?,?,?,?,?,?,?,?)",
+                            params![
+                                id,
+                                format!("# Deleted note recovery\n\n{}", old.markdown),
+                                1,
+                                old.created,
+                                now(),
+                                false,
+                                false,
+                                false,
+                                serde_json::to_string(&old.tags).map_err(error)?
+                            ],
+                        )
+                        .map_err(error)?;
+                        tx.execute("INSERT INTO outbox VALUES(?,1)", [id])
+                            .map_err(error)?;
+                        conflicts += 1;
+                    }
+                }
+                let mut deletion: Note = if let Some(snapshot) = deleted {
+                    serde_json::from_str(&snapshot).map_err(error)?
+                } else {
+                    record.note.clone()
+                };
+                tombstone(&tx, &mut deletion, !record.note.deleted)?;
+                // Keep only server system fields and a content-free base.
+                tx.execute("INSERT INTO cloud_records VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET fields=excluded.fields,snapshot=excluded.snapshot",params![deletion.id,record.fields,serde_json::to_string(&deletion).map_err(error)?]).map_err(error)?;
+                continue;
+            }
             let incoming = serde_json::to_string(&record.note).map_err(error)?;
             let prior: Option<String> = tx
                 .query_row(
@@ -775,10 +944,22 @@ impl Library {
         }
         tx.execute("INSERT INTO settings VALUES('cloudToken',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",[token]).map_err(error)?;
         tx.commit().map_err(error)?;
+        let _ = self.clean_deleted_assets(dir, candidates);
         Ok(conflicts)
     }
     pub fn acknowledge(&mut self, note: &Note, fields: &str) -> Result<(), String> {
         let tx = self.db.transaction().map_err(error)?;
+        let deleted: bool = tx
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM deleted_notes WHERE id=?)",
+                [&note.id],
+                |r| r.get(0),
+            )
+            .map_err(error)?;
+        if deleted && !note.deleted {
+            tx.execute("INSERT INTO cloud_records VALUES(?,?,'{}') ON CONFLICT(id) DO UPDATE SET fields=excluded.fields,snapshot='{}'",params![note.id,fields]).map_err(error)?;
+            return tx.commit().map_err(error);
+        }
         tx.execute("INSERT INTO cloud_records VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET fields=excluded.fields,snapshot=excluded.snapshot",params![note.id,fields,serde_json::to_string(note).map_err(error)?]).map_err(error)?;
         tx.execute(
             "DELETE FROM outbox WHERE id=? AND revision=?",
@@ -905,5 +1086,125 @@ mod library_transfer_tests {
                 .is_err()
         );
         assert_eq!(db.setting("cloudToken").unwrap().unwrap(), "next");
+    }
+}
+
+#[cfg(test)]
+mod deletion_tests {
+    use super::*;
+    fn cloud(note: Note, fields: &str) -> CloudRecord {
+        CloudRecord {
+            note,
+            fields: fields.into(),
+            assets: Default::default(),
+        }
+    }
+    #[test]
+    fn permanent_delete_removes_content_history_draft_and_unshared_images() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut db = Library::open(dir.path()).unwrap();
+        let asset = put_asset(dir.path(), b"\x89PNG\r\n\x1a\nprivate").unwrap();
+        let n = db.create(format!("secret ![]({asset})"), vec![]).unwrap();
+        let mut changed = n.clone();
+        changed.markdown.push_str(" edit");
+        let changed = db.save(changed).unwrap();
+        store_draft(dir.path(), &changed).unwrap();
+        db.acknowledge(&n, "old-fields").unwrap();
+        db.delete(dir.path(), &n.id, changed.revision).unwrap();
+        assert!(db.read(&n.id).is_err());
+        assert!(db.history(&n.id).unwrap().is_empty());
+        assert!(drafts(dir.path()).unwrap().is_empty());
+        assert!(asset_bytes(dir.path(), asset.strip_prefix("anubis-asset:").unwrap()).is_err());
+        let pending = db.pending().unwrap();
+        assert_eq!(pending.len(), 1);
+        assert!(pending[0].deleted);
+        assert!(pending[0].markdown.is_empty());
+        // A late response for an upload started before deletion cannot clear it.
+        db.acknowledge(&changed, "late-fields").unwrap();
+        assert!(db.pending().unwrap()[0].deleted);
+        assert!(
+            !String::from_utf8(db.backup(dir.path()).unwrap())
+                .unwrap()
+                .contains("secret")
+        );
+        db.acknowledge(&pending[0], "delete-fields").unwrap();
+        assert!(db.pending().unwrap().is_empty());
+        // A stale/revived remote version must queue deletion again, not recreate.
+        db.apply_cloud(dir.path(), vec![cloud(changed, "revived")], "token", &[])
+            .unwrap();
+        assert!(db.list().unwrap().is_empty());
+        assert!(db.pending().unwrap()[0].deleted);
+    }
+    #[test]
+    fn deletion_sync_preserves_other_notes_shared_images_and_offline_edits() {
+        let a = tempfile::tempdir().unwrap();
+        let b = tempfile::tempdir().unwrap();
+        let mut first = Library::open(a.path()).unwrap();
+        let mut second = Library::open(b.path()).unwrap();
+        let asset = put_asset(a.path(), b"\x89PNG\r\n\x1a\nshared").unwrap();
+        let n = first
+            .create(format!("original ![]({asset})"), vec![])
+            .unwrap();
+        let shared = first
+            .create(format!("survivor ![]({asset})"), vec![])
+            .unwrap();
+        first.acknowledge(&n, "base").unwrap();
+        second
+            .apply_cloud(b.path(), vec![cloud(n.clone(), "base")], "one", &[])
+            .unwrap();
+        let mut edit = second.read(&n.id).unwrap();
+        edit.markdown = "offline edit".into();
+        second.save(edit.clone()).unwrap();
+        store_draft(b.path(), &edit).unwrap();
+        first.delete(a.path(), &n.id, n.revision).unwrap();
+        assert!(first.read(&shared.id).is_ok());
+        assert!(asset_bytes(a.path(), asset.strip_prefix("anubis-asset:").unwrap()).is_ok());
+        let deletion = first
+            .pending()
+            .unwrap()
+            .into_iter()
+            .find(|n| n.deleted)
+            .unwrap();
+        assert_eq!(
+            second
+                .apply_cloud(
+                    b.path(),
+                    vec![cloud(deletion.clone(), "deleted")],
+                    "two",
+                    &[]
+                )
+                .unwrap(),
+            1
+        );
+        assert!(second.read(&n.id).is_err());
+        assert_eq!(second.list().unwrap().len(), 1);
+        assert!(
+            second.all_notes().unwrap()[0]
+                .markdown
+                .contains("offline edit")
+        );
+        assert_ne!(second.all_notes().unwrap()[0].id, n.id);
+        assert_eq!(drafts(b.path()).unwrap().len(), 1);
+        // Repeated fetch is idempotent and never creates another recovery copy.
+        second
+            .apply_cloud(b.path(), vec![cloud(deletion, "deleted")], "three", &[])
+            .unwrap();
+        assert_eq!(second.list().unwrap().len(), 1);
+    }
+    #[test]
+    fn stale_delete_and_old_schema_do_not_lose_notes() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut db = Library::open(dir.path()).unwrap();
+        let n = db.create("keep".into(), vec![]).unwrap();
+        let newer = db.save(n.clone()).unwrap();
+        assert!(db.delete(dir.path(), &n.id, n.revision).is_err());
+        assert_eq!(db.read(&n.id).unwrap().revision, newer.revision);
+        db.db
+            .execute_batch("DROP TABLE deleted_notes; PRAGMA user_version=2;")
+            .unwrap();
+        drop(db);
+        let db = Library::open(dir.path()).unwrap();
+        assert_eq!(db.read(&n.id).unwrap().markdown, "keep");
+        assert!(db.pending().is_ok());
     }
 }

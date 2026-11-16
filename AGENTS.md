@@ -17,7 +17,7 @@ Anubis is a desktop and iOS Markdown and plain-text editor built with React, Typ
 - `src-tauri/src/workspace.rs`: native file operations and filesystem tests.
 - `src-tauri/src/lib.rs`: Tauri commands, folder picker, watcher, and lifecycle handling.
 - `src-tauri/tauri.conf.json`: app identity, window configuration, and bundles.
-- `src-tauri/icons/Anubis.icon`: modern macOS icon composition; `build.rs` compiles it with Xcode into ignored build output. Bundle its `Assets.car` and fallback ICNS, and retain matching icon keys in both macOS Info.plist variants to avoid the system-added legacy icon frame.
+- `src-tauri/icons/Anubis.icon`: shared macOS/iOS icon composition; `build.rs` compiles it with Xcode into ignored build output. Bundle its `Assets.car` and fallback ICNS, and retain matching icon keys in both macOS Info.plist variants to avoid the system-added legacy icon frame. The iOS project compiles the same `.icon` resource with app-icon name `Anubis`; do not revert to the white-matted legacy `AppIcon` PNG set.
 - `public/icons/anubis-app.png`: source app icon; `anubis-light.png` and `anubis-dark.png`: themed sidebar logos.
 - `tests/native-fixture.ts`: mocked Tauri boundary for Playwright tests.
 - `src-tauri/plugins/ios-workspace/`: native iOS folder bookmarks, security-scoped access, and background save coordination.
@@ -34,19 +34,19 @@ Read `README.md` for supported formats, limits, and known behavior. Track remain
 
 ## Product conventions
 
-Keep the writing interface minimal. Use system fonts and existing Lucide icons. Give icon-only buttons descriptive accessible names and hover labels. Preserve keyboard focus, Escape dismissal, and reduced-motion support.
+Keep the writing interface minimal. Hide successful Saved/Synced header messages visually while retaining accessible status announcements and stable toolbar spacing; show saving/syncing progress and unresolved errors or pending uploads. Use system fonts and existing Lucide icons. Give icon-only buttons descriptive accessible names and hover labels. Preserve keyboard focus, Escape dismissal, and reduced-motion support.
 
 Use rem units for scalable interface dimensions and app-layout container queries for responsive breakpoints. Preserve physical macOS window-control spacing and the iOS minimum touch target when changing App zoom. Use theme tokens rather than adding isolated colors. Check both themes and appearances when changing styles. Settings live in a dialog. The sidebar is resizable and remembers its width; keep the native macOS controls aligned with the header.
 
 Documents and Notes use icon-only mode buttons in the bottom sidebar control row beside Settings and the theme toggle. Keep hover labels, accessible names, and the selected mode indication. Do not restore the document sidebar search or the Notes sidebar's “Saved on this device” label.
 
-Notes-specific History, Export, Pin, Archive, and Trash/Restore actions live in the Note actions dropdown beside Source and Focus. Preserve keyboard navigation, Escape/outside dismissal, and focus restoration after actions and the History dialog.
+Notes-specific History, Export, and Delete note actions live in the Note actions dropdown beside Source and Focus. Preserve keyboard navigation, Escape/outside dismissal, and focus restoration after actions and the History dialog.
 
 Bold, Italic, Heading, Bullet list, Quote, and Table belong in Tiptap’s selection toolbar, shown beside selected editor text in both Markdown modes. Preserve selection during formatting, keyboard access, Escape dismissal, and touch target sizing. Hide it in source/plain-text mode and when editing is unavailable.
 
 Insert image stays in the top editing toolbar, available in both Markdown modes. Documents embed supported raster images as data URLs within the document size limit; Notes use private attachment references. Do not store Document images in the Notes library. Keep image insertion unavailable for plain-text and source mode.
 
-Documents use folder navigation and the editor; Notes use library/tag navigation, a resizable note list, and the shared Markdown editor. Preserve each mode's sidebar width and active item. Keep one sidebar toggle in the editor header for both modes; in Notes it collapses/restores both navigation columns. The keyboard shortcut must use the same behavior. Do not add a duplicate toggle in the note list or a separate editor note-list toggle. Preserve access to navigation in narrow and touch layouts.
+Documents use folder navigation and the editor; Notes use one resizable sidebar containing Search and Add Note, then an expandable All Notes tree. Tags/subtags use the same folder rows/disclosure controls as Documents, with hash icons; edit tags only in note content, with no sidebar tag-edit controls; notes use compact file rows. Untagged notes live directly under All Notes; multi-tag notes appear under each direct tag. Sort folders/notes alphabetically, remember expansion, and preserve keyboard tree navigation. Search returns matching notes once across the whole library. Preserve each mode's sidebar width and active item. Keep one sidebar toggle in the editor header for both modes; it collapses/restores the single sidebar. The keyboard shortcut must use the same behavior. Do not add a duplicate toggle in the note list or a separate editor note-list toggle. Preserve access to navigation in narrow and touch layouts.
 
 Align the Notes sidebar toggle and editor toolbar with the Documents header, with navigation expanded or collapsed. Keep the native macOS header's 64px geometry and window-control clearance. Let controls wrap only when available space requires it; do not force Notes breadcrumbs or toolbar groups to full-width rows on desktop.
 
@@ -60,10 +60,11 @@ Focus mode positions the typing line about 40% down the editor and fades surroun
 - Keep CloudKit network waits outside the frontend save/navigation queue. Coalesce concurrent sync requests and reconcile only clean, unchanged editor snapshots; never replace edits made while IPC was awaiting a response. Preserve the native exact-revision acknowledgement rule.
 - Keep Notes usable offline. A sync that changes only metadata must not reload editor content or reset selection, undo history, or source mode. Preserve failed drafts until a successful save/recovery copy or explicitly confirmed discard.
 - Notes tags derive from Markdown, including nested and multiword tags. Exclude code, escaped hashtags, and image/link syntax. Tag removal must retain the notes. Keep attachment references stable; resolving an image for display must not rewrite its Markdown. Crop and resize edits preserve original bytes and use width/data-crop attributes on HTML image tags in Markdown. Preserve these through reload, source mode, history, backup/export, and sync. Do not flatten or replace originals silently; external viewers may ignore crop metadata.
-- Backup imports add independent copies without overwriting existing notes. Preserve images, revisions, drafts, Trash, and pinned-tag preferences. Do not migrate document folders into Notes automatically or introduce attachment/revision cleanup without a retention policy covering recovery and unsynced data.
+- Notes have no Pinned, Archive, Today, To-do, or Trash views. Confirm permanent deletion, remove note content/history, and queue a content-free deletion marker for sync. Keep markers to prevent stale clients from resurrecting IDs. Preserve concurrently edited remote text as a separate recovery copy/draft. Delete only unshared assets referenced by the deleted note, retaining references from surviving notes, history, cloud bases, and drafts. Legacy archived/trashed notes remain visible in All Notes for explicit deletion.
+- Backup imports add independent copies without overwriting existing notes. Preserve images, revisions, drafts, and legacy metadata/preferences when reading older backups. Do not migrate document folders into Notes automatically or introduce attachment/revision cleanup without a retention policy covering recovery and unsynced data.
 - CloudKit tests require explicit opt-in and an isolated test container/zone. Never test by modifying the user's live library. Signing identities and provisioning remain local.
 - Preserve autosave ordering and flush pending changes before navigation, workspace changes, and quit.
-- Never overwrite externally changed files or silently discard drafts. Preserve conflict recovery, non-overwriting creation/rename, and Trash-based deletion.
+- Never overwrite externally changed files or silently discard drafts. Preserve conflict recovery, non-overwriting creation/rename, and OS Trash-based deletion for Documents. Notes use confirmed permanent deletion as described above.
 - Keep native filesystem operations within the selected root; retain path validation, symlink restrictions, encoding handling, and size limits.
 - Opening a document must not rewrite it.
 - The bundle identifier `com.stubbornspace.kronos` and existing `kronos.*` / `typclone.*` preference keys intentionally preserve compatibility after the Anubis rename. Do not rename them without an explicit migration plan.

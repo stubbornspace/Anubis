@@ -16,6 +16,7 @@
 		6AD47C2F2B470169440FAB5E /* CloudKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 59B1681EEB5D8E092CACC1C2 /* CloudKit.framework */; };
 		75409928714D1331B557E48E /* assets in Resources */ = {isa = PBXBuildFile; fileRef = 467FE115E44E7755ABD6E40B /* assets */; };
 		94059418F832FBF7D85F4FC3 /* WebKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 8CC66C90EB39E12A394A670A /* WebKit.framework */; };
+		9635A838C8EE7642633249F8 /* Anubis.icon in Resources */ = {isa = PBXBuildFile; fileRef = 7E97CD144D1229CD3F242EF9 /* Anubis.icon */; };
 		A40F307A5A33E43E8D169655 /* UIKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 44D650B1F9BEB596E8AD788F /* UIKit.framework */; };
 		A81A1B66C092830C87AAB7BD /* Metal.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = FC31720D3B1C669EDFA7C9B6 /* Metal.framework */; };
 		B2D7D21F19A4DE484E9D9B6B /* libapp.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 2E4D73C48D3908B2B742EA1C /* libapp.a */; };
@@ -44,6 +45,7 @@
 		59B1681EEB5D8E092CACC1C2 /* CloudKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CloudKit.framework; path = System/Library/Frameworks/CloudKit.framework; sourceTree = SDKROOT; };
 		7A1399C37DA11E0D5D9B42F1 /* recovery.rs */ = {isa = PBXFileReference; path = recovery.rs; sourceTree = "<group>"; };
 		7DC5AB771D0293D0687D5612 /* Security.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Security.framework; path = System/Library/Frameworks/Security.framework; sourceTree = SDKROOT; };
+		7E97CD144D1229CD3F242EF9 /* Anubis.icon */ = {isa = PBXFileReference; lastKnownFileType = wrapper.icon; path = Anubis.icon; sourceTree = "<group>"; };
 		81C78F158BC36EFC88DE4AD7 /* library.rs */ = {isa = PBXFileReference; path = library.rs; sourceTree = "<group>"; };
 		8CC66C90EB39E12A394A670A /* WebKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WebKit.framework; path = System/Library/Frameworks/WebKit.framework; sourceTree = SDKROOT; };
 		9513CA1DE7BBE7FB7D8B23A5 /* anubis_iOS.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = anubis_iOS.entitlements; sourceTree = "<group>"; };
@@ -82,6 +84,15 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		16C9885C8D7A39606A49F940 /* icons */ = {
+			isa = PBXGroup;
+			children = (
+				7E97CD144D1229CD3F242EF9 /* Anubis.icon */,
+			);
+			name = icons;
+			path = ../../icons;
+			sourceTree = "<group>";
+		};
 		1B27B7FF2D0159455C22551C /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
@@ -179,6 +190,7 @@
 				D17DB9AC1BE27C7B8925828B /* LaunchScreen.storyboard */,
 				41F820DD1EE19022257C6428 /* anubis_iOS */,
 				EC68197ADEF54DDB28BC04F5 /* Externals */,
+				16C9885C8D7A39606A49F940 /* icons */,
 				CEA34188C3736CB048173EDA /* Sources */,
 				58891FB71C00632B7B3957BF /* src */,
 				9E7CCA02B0E88CFE36BFA2C4 /* UITests */,
@@ -187,14 +199,14 @@
 			);
 			sourceTree = "<group>";
 		};
-		"TEMP_BB55CD67-FE31-45DB-9282-AAE71F595551" /* arm64 */ = {
+		"TEMP_4C74CC7F-59B4-4089-8407-BCE5CE515061" /* arm64 */ = {
 			isa = PBXGroup;
 			children = (
 			);
 			path = arm64;
 			sourceTree = "<group>";
 		};
-		"TEMP_D0765A21-2083-439A-A6FF-3B2B488532D5" /* x86_64 */ = {
+		"TEMP_FAEBA8DB-E66E-4256-A16E-A795470D3A10" /* x86_64 */ = {
 			isa = PBXGroup;
 			children = (
 			);
@@ -281,6 +293,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				9635A838C8EE7642633249F8 /* Anubis.icon in Resources */,
 				33AF059E26E3F1D35FA7CB93 /* Assets.xcassets in Resources */,
 				36891FCA90A271AB448292FA /* LaunchScreen.storyboard in Resources */,
 				75409928714D1331B557E48E /* assets in Resources */,
@@ -348,7 +361,7 @@
 				ARCHS = (
 					arm64,
 				);
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_APPICON_NAME = Anubis;
 				CODE_SIGN_ENTITLEMENTS = anubis_iOS/anubis_iOS.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				ENABLE_BITCODE = NO;
@@ -532,7 +545,7 @@
 				ARCHS = (
 					arm64,
 				);
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_APPICON_NAME = Anubis;
 				CODE_SIGN_ENTITLEMENTS = anubis_iOS/anubis_iOS.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				ENABLE_BITCODE = NO;

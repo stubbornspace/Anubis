@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { beforeEach, afterEach, expect, it, vi } from "vitest";
+import { confirm } from "@tauri-apps/plugin-dialog";
 import { invoke } from "@tauri-apps/api/core";
 import { LibraryController, type Note } from "./library";
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
@@ -35,6 +36,7 @@ let readGate: ReturnType<typeof deferred<Note>> | undefined;
 let drafts: Note[];
 beforeEach(async () => {
   vi.useFakeTimers();
+  vi.mocked(confirm).mockResolvedValue(true);
   localStorage.clear();
   notes = new Map([
     ["first", initial("first")],
@@ -52,8 +54,20 @@ beforeEach(async () => {
       if (r.op === "getSetting") return null;
       if (r.op === "read")
         return readGate ? readGate.promise : { ...notes.get(r.id)! };
+      if (r.op === "clearDraft") {
+        drafts = drafts.filter((n) => n.id !== r.id);
+        return;
+      }
       if (r.op === "draft") {
         drafts.push({ ...r.note });
+        return;
+      }
+      if (r.op === "delete") {
+        const old = notes.get(r.id);
+        if (!old || old.revision !== r.revision)
+          throw new Error("Note changed before deletion");
+        notes.delete(r.id);
+        drafts = drafts.filter((n) => n.id !== r.id);
         return;
       }
       if (r.op === "save") {
@@ -170,4 +184,38 @@ it("does not begin sync if local save fails", async () => {
   expect(
     vi.mocked(invoke).mock.calls.some(([cmd]) => cmd === "sync_library"),
   ).toBe(false);
+});
+
+it("confirmed deletion removes the current note and selects another; cancel preserves it", async () => {
+  vi.mocked(confirm).mockResolvedValueOnce(false);
+  await controller.remove();
+  expect(notes.size).toBe(2);
+  expect(controller.state.note?.id).toBe("first");
+  await controller.remove();
+  expect(notes.has("first")).toBe(false);
+  expect(controller.state.note?.id).toBe("second");
+  await controller.remove();
+  expect(controller.state.note).toBeNull();
+  expect(notes.size).toBe(0);
+});
+it("remote deletion clears a clean active note and selects a survivor", async () => {
+  const { task } = await start();
+  notes.delete("first");
+  network.resolve({ pending: false, conflicts: 0 });
+  await task;
+  expect(controller.state.note?.id).toBe("second");
+  expect(controller.state.error).toBe("");
+});
+it("remote deletion journals concurrent typing for explicit recovery instead of replacing it", async () => {
+  const { task } = await start();
+  controller.edit("unsaved during deletion");
+  notes.delete("first");
+  network.resolve({ pending: false, conflicts: 0 });
+  await task;
+  expect(controller.state.note?.markdown).toBe("unsaved during deletion");
+  expect(controller.state.conflict).toBe(true);
+  expect(drafts[0].markdown).toBe("unsaved during deletion");
+  await controller.discard();
+  expect(controller.state.note).toBeNull();
+  expect(drafts).toHaveLength(0);
 });

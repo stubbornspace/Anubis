@@ -128,15 +128,14 @@ export class LibraryController {
       }
       const id = localStorage.getItem("kronos.activeNote");
       const first =
-        this.state.notes.find((n) => n.id === id && !n.trashed) ??
-        this.state.notes.find((n) => !n.trashed && !n.archived);
+        this.state.notes.find((n) => n.id === id) ?? this.state.notes[0];
       if (first) this.activate(await call<Note>({ op: "read", id: first.id }));
     }).then((ok) => {
       if (!ok) this.initialization = undefined;
       return ok;
     }));
   edit = (markdown: string) => {
-    if (!this.state.note || this.state.busy || this.state.note.trashed) return;
+    if (!this.state.note || this.state.busy) return;
     this.set({
       note: { ...this.state.note, markdown, tags: tagsOf(markdown) },
       dirty: true,
@@ -209,26 +208,27 @@ export class LibraryController {
       );
       await this.refresh();
     });
-  change = (patch: Partial<Pick<Note, "pinned" | "archived" | "trashed">>) =>
+  remove = () =>
     this.serial(async () => {
-      await this.flush();
-      if (!this.state.note) return;
+      const note = this.state.note;
       if (
-        patch.trashed &&
+        !note ||
         !(await confirm(
-          "Move this note to library Trash? You can restore it later.",
-          { title: "Trash note", kind: "warning" },
+          "Permanently delete this note and its history? This cannot be undone and will delete it from your other synced devices.",
+          { title: "Delete note", kind: "warning" },
         ))
       )
         return;
+      clearTimeout(this.timer);
+      await call({ op: "delete", id: note.id, revision: note.revision });
       this.changed();
-      this.set({
-        note: await call<Note>({
-          op: "save",
-          note: { ...this.state.note, ...patch },
-        }),
-      });
+      this.activate(null);
+      localStorage.removeItem("kronos.activeNote");
       await this.refresh();
+      if (this.state.notes[0])
+        this.activate(
+          await call<Note>({ op: "read", id: this.state.notes[0].id }),
+        );
     });
   recover = () =>
     this.serial(async () => {
@@ -254,8 +254,11 @@ export class LibraryController {
         }))
       )
         return;
-      const saved = await call<Note>({ op: "read", id: this.state.note.id });
-      await call({ op: "clearDraft", id: saved.id });
+      const id = this.state.note.id;
+      const saved = this.state.notes.some((n) => n.id === id)
+        ? await call<Note>({ op: "read", id })
+        : null;
+      await call({ op: "clearDraft", id });
       this.activate(saved);
       await this.refresh();
     });
@@ -324,7 +327,22 @@ export class LibraryController {
     const reconciled = await this.serial(async () => {
       await this.refresh();
       const note = this.state.note;
-      if (note && !this.state.dirty && !this.state.conflict) {
+      if (note && !this.state.notes.some((n) => n.id === note.id)) {
+        if (this.state.dirty || this.state.conflict) {
+          await call({ op: "draft", note });
+          this.set({
+            conflict: true,
+            error:
+              "This note was deleted on another device. Save a recovery copy to keep your unsaved edits, or discard them.",
+          });
+        } else {
+          this.activate(
+            this.state.notes[0]
+              ? await call<Note>({ op: "read", id: this.state.notes[0].id })
+              : null,
+          );
+        }
+      } else if (note && !this.state.dirty && !this.state.conflict) {
         const saved = await call<Note>({ op: "read", id: note.id });
         if (
           this.state.note === note &&

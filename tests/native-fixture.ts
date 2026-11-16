@@ -166,6 +166,18 @@ export const test = base.extend({
                 };
                 lib.notes.push(result);
               }
+              if (r.op === "delete") {
+                const n = lib.notes.find((n: any) => n.id === r.id);
+                if (
+                  !n ||
+                  n.revision !== r.revision ||
+                  w.__nativeTest.failDelete
+                )
+                  throw new Error("Note deletion failed");
+                lib.notes = lib.notes.filter((n: any) => n.id !== r.id);
+                delete lib.drafts[r.id];
+                if (lib.history) delete lib.history[r.id];
+              }
               if (r.op === "draft") lib.drafts[r.note.id] = r.note;
               if (r.op === "clearDraft") delete lib.drafts[r.id];
               if (r.op === "save") {

@@ -296,10 +296,21 @@ test("note library navigation and background saves work on touch devices", async
   if ((await sidebarToggle.getAttribute("aria-expanded")) === "true")
     await sidebarToggle.tap();
   await sidebarToggle.tap();
-  const closeFiles = page.getByLabel("Close files", { exact: true });
-  if (await closeFiles.isVisible()) await closeFiles.tap();
-  await expect(page.locator(".note-card")).toContainText("Mobile library note");
-  await page.locator(".note-card").tap();
+  await expect(page.locator(".note-list-container")).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "All Notes", exact: true }),
+  ).toBeVisible();
+  const personal = page.getByRole("button", {
+    name: "Tag personal",
+    exact: true,
+  });
+  await personal.tap();
+  if ((await personal.getAttribute("aria-expanded")) === "false")
+    await page
+      .getByRole("button", { name: "Expand tag personal", exact: true })
+      .tap();
+  await expect(page.locator(".note-row")).toContainText("Mobile library note");
+  await page.locator(".note-row").tap();
   await expect(page.getByLabel("Markdown editor")).toContainText(
     "Mobile library note",
   );

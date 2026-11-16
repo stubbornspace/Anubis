@@ -102,6 +102,102 @@ export const test = base.extend({
           w.__nativeTest.calls.push(command);
           const data = read();
           switch (command) {
+            case "sync_library":
+              if (w.__nativeTest.syncFailure)
+                throw new Error("iCloud unavailable");
+              return { pending: false, conflicts: 0 };
+            case "export_library":
+              return true;
+            case "library_call": {
+              const r = args.request;
+              data.library ??= {
+                notes: [],
+                drafts: {},
+                settings: {},
+                assets: {},
+              };
+              const lib = data.library;
+              const summary = (n: any) => ({
+                ...n,
+                markdown: undefined,
+                title:
+                  n.markdown
+                    .split("\n")
+                    .find((l: string) => l.trim())
+                    ?.replace(/^#+\s*/, "") || "Untitled note",
+                excerpt: n.markdown
+                  .split("\n")
+                  .slice(1)
+                  .join(" ")
+                  .slice(0, 180),
+                todo: n.markdown.includes("- [ ] "),
+              });
+              let result: any = null;
+              if (r.op === "load")
+                result = {
+                  notes: lib.notes.map(summary),
+                  drafts: Object.values(lib.drafts),
+                };
+              if (r.op === "history") result = lib.history?.[r.id] || [];
+              if (r.op === "getSetting") result = lib.settings[r.key] || null;
+              if (r.op === "setSetting") lib.settings[r.key] = r.value;
+              if (r.op === "search")
+                result = lib.notes
+                  .filter((n: any) =>
+                    n.markdown.toLowerCase().includes(r.query.toLowerCase()),
+                  )
+                  .map((n: any) => n.id);
+              if (r.op === "read") {
+                result = lib.notes.find((n: any) => n.id === r.id);
+                if (!result) throw new Error("Note not found");
+              }
+              if (r.op === "create") {
+                result = {
+                  id: crypto.randomUUID(),
+                  markdown: r.markdown,
+                  tags: r.tags,
+                  revision: 1,
+                  created: Date.now(),
+                  updated: Date.now(),
+                  pinned: false,
+                  archived: false,
+                  trashed: false,
+                };
+                lib.notes.push(result);
+              }
+              if (r.op === "draft") lib.drafts[r.note.id] = r.note;
+              if (r.op === "clearDraft") delete lib.drafts[r.id];
+              if (r.op === "save") {
+                lib.drafts[r.note.id] = r.note;
+                store(data);
+                if (w.__nativeTest.failSave)
+                  throw new Error("Note save failed");
+                const index = lib.notes.findIndex(
+                  (n: any) => n.id === r.note.id,
+                );
+                if (index < 0 || lib.notes[index].revision !== r.note.revision)
+                  throw new Error("Note has a newer version");
+                lib.history ??= {};
+                (lib.history[r.note.id] ??= []).unshift(lib.notes[index]);
+                result = {
+                  ...r.note,
+                  revision: r.note.revision + 1,
+                  updated: Date.now(),
+                };
+                lib.notes[index] = result;
+                delete lib.drafts[r.note.id];
+              }
+              if (r.op === "putAsset") {
+                const id = "a".repeat(64);
+                lib.assets[id] =
+                  "data:image/png;base64," +
+                  btoa(String.fromCharCode(...r.bytes));
+                result = "anubis-asset:" + id;
+              }
+              if (r.op === "getAsset") result = lib.assets[r.id];
+              store(data);
+              return result;
+            }
             case "plugin:event|listen":
               listeners.set(args.event, [
                 ...(listeners.get(args.event) || []),

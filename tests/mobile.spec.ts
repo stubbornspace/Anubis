@@ -274,3 +274,38 @@ test("choosing a folder after failed restoration retains the pending iOS recover
     "Keep this through folder recovery",
   );
 });
+
+test("note library navigation and background saves work on touch devices", async ({
+  page,
+}) => {
+  await openMobileWorkspace(page);
+  await showFiles(page);
+  await page.getByRole("button", { name: "Notes", exact: true }).tap();
+  await page
+    .getByRole("button", { name: "New note", exact: true })
+    .first()
+    .tap();
+  await page
+    .getByLabel("Markdown editor")
+    .fill("# Mobile library note\n\n#personal");
+  await page.evaluate(() =>
+    window.dispatchEvent(new Event("anubis-background")),
+  );
+  await expect(page.getByRole("status")).toHaveText("Saved locally");
+  const sidebarToggle = page.getByLabel("Toggle sidebar");
+  if ((await sidebarToggle.getAttribute("aria-expanded")) === "true")
+    await sidebarToggle.tap();
+  await sidebarToggle.tap();
+  const closeFiles = page.getByLabel("Close files", { exact: true });
+  if (await closeFiles.isVisible()) await closeFiles.tap();
+  await expect(page.locator(".note-card")).toContainText("Mobile library note");
+  await page.locator(".note-card").tap();
+  await expect(page.getByLabel("Markdown editor")).toContainText(
+    "Mobile library note",
+  );
+  await showFiles(page);
+  await page.getByRole("button", { name: "Documents", exact: true }).tap();
+  if (compact(page))
+    await page.getByLabel("Close files", { exact: true }).tap();
+  await expect(page.getByLabel("Markdown editor")).toContainText("Welcome");
+});

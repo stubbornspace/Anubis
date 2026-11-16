@@ -41,6 +41,10 @@ impl<R: Runtime> IosWorkspace<R> {
         self.call("finishBackgroundSave", serde_json::json!({}))
     }
 
+    pub fn share_file(&self, path: &Path) -> Result<(), String> {
+        self.call("shareFile", serde_json::json!({"path": path}))
+    }
+
     pub fn set_appearance(&self, dark: bool) -> Result<(), String> {
         self.call("setAppearance", serde_json::json!({"dark": dark}))
     }

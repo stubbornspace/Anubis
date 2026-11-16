@@ -3,10 +3,13 @@ fn main() {
     if target == "macos" || target == "ios" {
         cc::Build::new()
             .file("apple/FileAccess.m")
+            .file("apple/NoteSync.m")
             .flag("-fobjc-arc")
             .flag("-fblocks")
             .compile("anubis_file_access");
         println!("cargo:rustc-link-lib=framework=Foundation");
+        println!("cargo:rustc-link-lib=framework=CloudKit");
+        println!("cargo:rerun-if-changed=apple/NoteSync.m");
         println!("cargo:rerun-if-changed=apple/FileAccess.m");
     }
     tauri_build::build()

@@ -1,6 +1,6 @@
 import { test, expect, openWorkspace } from "./native-fixture";
 
-test("opens a native workspace, expands subfolders, filters files and edits plain text", async ({
+test("opens a native workspace, expands subfolders and edits plain text", async ({
   page,
 }) => {
   await openWorkspace(page);
@@ -16,7 +16,7 @@ test("opens a native workspace, expands subfolders, filters files and edits plai
       () => (window as any).__nativeTest.read().files["Notes/plain.txt"],
     ),
   ).toBe("Keep **literal** characters");
-  await page.getByLabel("Search files").fill("Thought");
+  await expect(page.getByLabel("Search files")).toHaveCount(0);
   await page.getByRole("button", { name: "Thought.md", exact: true }).click();
   await expect(page.locator(".writing h1")).toHaveText("Thought");
 });

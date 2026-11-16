@@ -1,4 +1,6 @@
 mod apple;
+mod library;
+mod note_sync;
 mod recovery;
 mod workspace;
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
@@ -349,6 +351,144 @@ async fn clear_recovery_draft(app: tauri::AppHandle) -> Result<(), String> {
     }
 }
 
+#[derive(Default)]
+struct LibraryState(Mutex<()>);
+
+#[derive(serde::Deserialize)]
+#[serde(tag = "op", rename_all = "camelCase")]
+enum LibraryRequest {
+    Load,
+    PutAsset { bytes: Vec<u8> },
+    Restore { json: String },
+    History { id: String },
+    GetAsset { id: String },
+    Search { query: String },
+    Read { id: String },
+    Create { markdown: String, tags: Vec<String> },
+    Save { note: library::Note },
+    Draft { note: library::Note },
+    ClearDraft { id: String },
+    GetSetting { key: String },
+    SetSetting { key: String, value: String },
+}
+#[tauri::command]
+async fn library_call(
+    app: tauri::AppHandle,
+    request: LibraryRequest,
+) -> Result<serde_json::Value, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<LibraryState>();
+        let _lock = state.0.lock().map_err(|e| e.to_string())?;
+        let dir = app
+            .path()
+            .app_data_dir()
+            .map_err(|e| e.to_string())?
+            .join("library");
+        let mut db = library::Library::open(&dir)?;
+        let value = match request {
+            LibraryRequest::Restore { json } => {
+                serde_json::json!(db.restore(&dir, json.as_bytes())?)
+            }
+            LibraryRequest::History { id } => serde_json::json!(db.history(&id)?),
+            LibraryRequest::PutAsset { bytes } => {
+                serde_json::json!(library::put_asset(&dir, &bytes)?)
+            }
+            LibraryRequest::GetAsset { id } => serde_json::json!(library::asset_url(&dir, &id)?),
+            LibraryRequest::Search { query } => serde_json::json!(db.search(&query)?),
+            LibraryRequest::Load => {
+                serde_json::json!({"notes": db.list()?, "drafts": library::drafts(&dir)?})
+            }
+            LibraryRequest::Read { id } => serde_json::json!(db.read(&id)?),
+            LibraryRequest::Create { markdown, tags } => {
+                serde_json::json!(db.create(markdown, tags)?)
+            }
+            LibraryRequest::Save { note } => {
+                library::store_draft(&dir, &note)?;
+                let saved = db.save(note)?;
+                library::clear_draft(&dir, &saved.id)?;
+                serde_json::json!(saved)
+            }
+            LibraryRequest::Draft { note } => {
+                library::store_draft(&dir, &note)?;
+                serde_json::Value::Null
+            }
+            LibraryRequest::ClearDraft { id } => {
+                library::clear_draft(&dir, &id)?;
+                serde_json::Value::Null
+            }
+            LibraryRequest::GetSetting { key } => serde_json::json!(db.setting(&key)?),
+            LibraryRequest::SetSetting { key, value } => {
+                db.set_setting(&key, &value)?;
+                serde_json::Value::Null
+            }
+        };
+        Ok(value)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn export_library(app: tauri::AppHandle, note_id: Option<String>) -> Result<bool, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let dir = app
+            .path()
+            .app_data_dir()
+            .map_err(|e| e.to_string())?
+            .join("library");
+        let bytes = {
+            let state = app.state::<LibraryState>();
+            let _lock = state.0.lock().map_err(|e| e.to_string())?;
+            let db = library::Library::open(&dir)?;
+            if let Some(id) = &note_id {
+                db.markdown_zip(&dir, id)?
+            } else {
+                db.backup(&dir)?
+            }
+        };
+        let name = if note_id.is_some() {
+            "Anubis-note.zip"
+        } else {
+            "Anubis-library.json"
+        };
+        #[cfg(target_os = "ios")]
+        {
+            let export_dir = tempfile::tempdir().map_err(|e| e.to_string())?;
+            let path = export_dir.path().join(name);
+            std::fs::write(&path, bytes).map_err(|e| e.to_string())?;
+            app.state::<IosWorkspace<tauri::Wry>>().share_file(&path)?;
+            Ok(true)
+        }
+        #[cfg(not(target_os = "ios"))]
+        {
+            let Some(file) = app
+                .dialog()
+                .file()
+                .set_title("Export from Anubis")
+                .set_file_name(name)
+                .blocking_save_file()
+            else {
+                return Ok(false);
+            };
+            let path = file.into_path().map_err(|e| e.to_string())?;
+            apple::coordinate(&path, None, apple::Access::Create, || {
+                let parent = path.parent().ok_or("Invalid export location")?;
+                let mut temp =
+                    tempfile::NamedTempFile::new_in(parent).map_err(|e| e.to_string())?;
+                temp.write_all(&bytes).map_err(|e| e.to_string())?;
+                temp.as_file().sync_all().map_err(|e| e.to_string())?;
+                temp.persist_noclobber(&path).map_err(|_| {
+                    "A file already exists there. Choose a new filename to preserve it.".to_string()
+                })?;
+                Ok(())
+            })?;
+            Ok(true)
+        }
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 #[tauri::command]
 fn frontend_ready(state: tauri::State<WorkspaceState>) {
     state.frontend_ready.store(true, Ordering::SeqCst);
@@ -366,7 +506,12 @@ pub fn run_app() {
     builder
         .plugin(tauri_plugin_dialog::init())
         .manage(WorkspaceState::default())
+        .manage(LibraryState::default())
+        .manage(note_sync::SyncState::default())
         .invoke_handler(tauri::generate_handler![
+            library_call,
+            export_library,
+            note_sync::sync_library,
             choose_workspace,
             restore_workspace,
             list_workspace,

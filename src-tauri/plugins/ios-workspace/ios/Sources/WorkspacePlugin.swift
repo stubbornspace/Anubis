@@ -66,6 +66,25 @@ final class WorkspacePlugin: Plugin, UIDocumentPickerDelegate {
         if let backgroundObserver { NotificationCenter.default.removeObserver(backgroundObserver) }
     }
 
+    @objc func shareFile(_ invoke: Invoke) throws {
+        let args = try invoke.parseArgs(PathArgs.self)
+        DispatchQueue.main.async {
+            guard var presenter = self.manager.viewController else {
+                invoke.reject("The editor is not ready to export.")
+                return
+            }
+            while let presented = presenter.presentedViewController { presenter = presented }
+            let activity = UIActivityViewController(activityItems: [URL(fileURLWithPath: args.path)], applicationActivities: nil)
+            activity.popoverPresentationController?.sourceView = presenter.view
+            activity.popoverPresentationController?.sourceRect = CGRect(x: presenter.view.bounds.midX, y: presenter.view.bounds.midY, width: 1, height: 1)
+            activity.completionWithItemsHandler = { _, _, _, error in
+                if let error { invoke.reject(error.localizedDescription) }
+                else { invoke.resolve() }
+            }
+            presenter.present(activity, animated: true)
+        }
+    }
+
     @objc func chooseFolder(_ invoke: Invoke) {
         DispatchQueue.main.async {
             guard self.pickerInvoke == nil else {

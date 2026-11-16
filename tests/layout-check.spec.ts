@@ -18,9 +18,7 @@ for (const kind of ["document", "folder"] as const) {
       kind === "document" ? "File name" : "Folder name",
     );
     await expect(name).toBeFocused();
-    await page
-      .getByLabel("Search files")
-      .evaluate((input: HTMLInputElement) => input.focus());
+    await trigger.evaluate((button: HTMLButtonElement) => button.focus());
     await expect(name).toBeFocused();
     for (let i = 0; i < 6; i++) {
       await page.keyboard.press("Tab");

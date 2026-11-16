@@ -26,7 +26,6 @@ import {
   MoreHorizontal,
   PanelLeft,
   FilePlus,
-  Search,
   FileText,
   CloudDownload,
   Code2,
@@ -42,8 +41,19 @@ import {
   X,
   Trash2,
   Pencil,
+  NotebookPen,
+  Archive,
+  Pin,
+  Undo2,
+  ImagePlus,
 } from "lucide-react";
 import { workspace, type Entry } from "./workspace";
+import { LibraryTools, NoteHistory } from "./library-tools";
+import { NoteTags } from "./tag-extension";
+import { tagText } from "./tags";
+import { NoteImage } from "./note-image";
+import { library } from "./library";
+import { LibrarySidebar, NoteList, type LibraryView } from "./library-ui";
 import { loadDocument } from "./editor";
 import { isIOS, compactNavigation, interfaceScale } from "./platform";
 import "./ocean.css";
@@ -164,14 +174,12 @@ function FileTree({
   selectedFolder,
   onRename,
   onOpen,
-  search,
 }: {
   entries: Entry[];
   active: string;
   selectedFolder: string;
   onRename: (entry: Entry) => void;
   onOpen: (path: string) => void;
-  search: string;
 }) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   useEffect(() => {
@@ -182,13 +190,10 @@ function FileTree({
       return next;
     });
   }, [selectedFolder]);
-  const matches = (e: Entry): boolean =>
-    e.path.toLowerCase().includes(search.toLowerCase()) ||
-    e.children.some(matches);
   const render = (items: Entry[], depth = 0): React.ReactNode =>
-    items.filter(matches).map((entry) => {
+    items.map((entry) => {
       if (entry.directory) {
-        const open = !!search || expanded.has(entry.path);
+        const open = expanded.has(entry.path);
         return (
           <div key={entry.path}>
             <div
@@ -269,22 +274,119 @@ function FileTree({
         </div>
       );
     });
-  return (
-    <>
-      {render(entries)}
-      {entries.length > 0 && !entries.some(matches) && (
-        <p className="empty">No matching files.</p>
-      )}
-    </>
-  );
+  return <>{render(entries)}</>;
 }
 
 const MemoFileTree = React.memo(FileTree);
 
 function App() {
-  const state = useSyncExternalStore(workspace.subscribe, workspace.snapshot);
+  const documentState = useSyncExternalStore(
+    workspace.subscribe,
+    workspace.snapshot,
+  );
+  const noteState = useSyncExternalStore(library.subscribe, library.snapshot);
+  const [mode, setMode] = useState<"documents" | "notes">(() =>
+    localStorage.getItem("kronos.mode") === "notes" ? "notes" : "documents",
+  );
+  const notesMode = mode === "notes";
+  const [libraryView, setLibraryView] = useState<LibraryView>(
+    () => (localStorage.getItem("kronos.libraryView") || "all") as LibraryView,
+  );
+  const [syncEnabled, setSyncEnabled] = useState(
+    () => localStorage.getItem("kronos.notesSync") === "true",
+  );
+  const [switchingMode, setSwitchingMode] = useState(false);
+  const switchingRef = useRef(false);
+  const [noteListVisible, setNoteListVisible] = useState(true);
+  const [noteDetail, setNoteDetail] = useState(false);
+  const note = noteState.note;
+  const state = notesMode
+    ? {
+        ...documentState,
+        ...noteState,
+        recoveredFrom: null,
+        opening: "",
+        revision: noteState.generation,
+        busy: noteState.busy || switchingMode,
+        doc: note
+          ? {
+              path: `note:${note.id}`,
+              name:
+                note.markdown
+                  .split("\n")
+                  .find((line) => line.trim())
+                  ?.replace(/^#+\s*/, "")
+                  .slice(0, 200) || "Untitled note",
+              markdown: note.markdown,
+              version: String(note.revision),
+              cloud: undefined,
+            }
+          : null,
+      }
+    : { ...documentState, busy: documentState.busy || switchingMode };
+  const switchMode = async (next: "documents" | "notes") => {
+    if (next === mode || switchingRef.current) return;
+    switchingRef.current = true;
+    setSwitchingMode(true);
+    try {
+      if (!(await (notesMode ? library.save() : workspace.save()))) return;
+      if (next === "notes" && !(await library.initialize())) {
+        setMode("notes");
+        return;
+      }
+      setMode(next);
+      localStorage.setItem("kronos.mode", next);
+      if (next === "notes") {
+        setNoteListVisible(true);
+        if (window.innerWidth / interfaceScale() <= 1000) setSidebar(false);
+      }
+    } finally {
+      switchingRef.current = false;
+      setSwitchingMode(false);
+    }
+  };
+  useEffect(() => {
+    if (!syncEnabled) return;
+    const timer = setInterval(() => {
+      if (
+        document.visibilityState === "visible" &&
+        library.state.ready &&
+        !library.state.busy &&
+        !library.state.dirty &&
+        !library.state.conflict
+      )
+        void library.sync();
+    }, 60000);
+    return () => clearInterval(timer);
+  }, [syncEnabled]);
+  const selectLibraryView = async (view: LibraryView) => {
+    if (!(await library.save())) return;
+    setLibraryView(view);
+    localStorage.setItem("kronos.libraryView", view);
+    setNoteListVisible(true);
+    setNoteDetail(false);
+    if (window.innerWidth / interfaceScale() <= 1000) setSidebar(false);
+  };
+  const openNote = async (id: string) => {
+    if (await library.select(id)) {
+      setNoteDetail(true);
+      if (window.innerWidth / interfaceScale() <= 1000) setSidebar(false);
+    }
+  };
+  const createNote = async () => {
+    if (
+      await library.create(
+        libraryView.startsWith("tag:") ? libraryView.slice(4) : undefined,
+      )
+    ) {
+      if (libraryView === "archive" || libraryView === "trash")
+        setLibraryView("all");
+      setNoteDetail(true);
+      if (window.innerWidth / interfaceScale() <= 1000) setSidebar(false);
+    }
+  };
   const doc = state.doc || { path: "", name: "", markdown: "", version: "" };
-  const plainText = /\.txt$/i.test(doc.name);
+  const plainText = !notesMode && /\.txt$/i.test(doc.name);
   const [appZoom, setAppZoom] = useState(() => {
     const saved = Number(localStorage.getItem("kronos.appZoom"));
     if (
@@ -334,7 +436,6 @@ function App() {
   const [sidebar, setSidebar] = useState(
       () => !compactNavigation(appZoom / 100),
     ),
-    [search, setSearch] = useState(""),
     [source, setSource] = useState(false),
     [focusMode, setFocusMode] = useState(false),
     [dark, setDark] = useState(
@@ -342,10 +443,27 @@ function App() {
     ),
     [modal, setModal] = useState<FileModal | null>(null),
     [name, setName] = useState("");
-  const [sidebarWidth, setSidebarWidth] = useState(() => {
+  const toggleSidebar = () => {
+    const expanded = notesMode
+      ? sidebar || (noteListVisible && !noteDetail)
+      : sidebar;
+    setSidebar(!expanded);
+    if (notesMode) {
+      setNoteListVisible(!expanded);
+      setNoteDetail(expanded);
+    }
+  };
+  const [documentSidebarWidth, setDocumentSidebarWidth] = useState(() => {
     const saved = Number(localStorage.getItem("kronos.sidebarWidth"));
     return Number.isFinite(saved) && saved >= 220 && saved <= 480 ? saved : 258;
   });
+  const [notesSidebarWidth, setNotesSidebarWidth] = useState(() => {
+    const value = Number(localStorage.getItem("kronos.notesSidebarWidth"));
+    return value >= 220 && value <= 480 ? value : 240;
+  });
+  const sidebarWidth = notesMode ? notesSidebarWidth : documentSidebarWidth;
+  const setSidebarWidth = (value: number) =>
+    notesMode ? setNotesSidebarWidth(value) : setDocumentSidebarWidth(value);
   const [sidebarLimit, setSidebarLimit] = useState(() =>
     Math.max(220, Math.min(480, window.innerWidth / (appZoom / 100) - 360)),
   );
@@ -353,8 +471,11 @@ function App() {
   const [resizing, setResizing] = useState(false);
   const visibleSidebarWidth = Math.min(sidebarWidth, sidebarLimit);
   useEffect(() => {
-    localStorage.setItem("kronos.sidebarWidth", String(sidebarWidth));
-  }, [sidebarWidth]);
+    localStorage.setItem(
+      notesMode ? "kronos.notesSidebarWidth" : "kronos.sidebarWidth",
+      String(sidebarWidth),
+    );
+  }, [sidebarWidth, notesMode]);
   useEffect(() => {
     const resized = () =>
       setSidebarLimit(
@@ -472,18 +593,43 @@ function App() {
       document.documentElement.style.removeProperty("--app-height");
     };
   }, []);
-  const update = workspace.edit;
+  const update = notesMode ? library.edit : workspace.edit;
+  const updateRef = useRef(update);
+  updateRef.current = update;
   useEffect(() => {
     void workspace.initialize();
+    if (localStorage.getItem("kronos.mode") === "notes")
+      void library.initialize();
     const connected = workspace.connect();
     return () => {
       void connected.then((disconnect) => disconnect());
     };
   }, []);
+  const [tagSuggestion, setTagSuggestion] = useState<{
+    from: number;
+    to: number;
+    items: string[];
+    index: number;
+  } | null>(null);
+  const tagKey = useRef<(event: KeyboardEvent) => boolean>(() => false);
+  const tagSelect = useRef<(tag: string) => void>(() => {});
+  tagSelect.current = (tag) => {
+    void selectLibraryView(`tag:${tag}`);
+  };
+  const imageInput = useRef<HTMLInputElement>(null);
+  const imageHandler = useRef<(files: File[]) => Promise<void>>(async () => {});
+  const notesModeRef = useRef(notesMode);
+  notesModeRef.current = notesMode;
   const editor = useEditor({
     extensions: [
       StarterKit.configure({ link: { openOnClick: false } }),
       Markdown,
+      NoteImage,
+      NoteTags.configure({
+        active: () => notesModeRef.current,
+        select: (tag) => tagSelect.current(tag),
+        key: (event) => tagKey.current(event),
+      }),
       TableKit,
       TaskList,
       TaskItem.configure({ nested: true }),
@@ -492,18 +638,156 @@ function App() {
     content: "",
     contentType: "markdown",
     editorProps: {
+      handlePaste: (_view, event) => {
+        const files = [...(event.clipboardData?.files || [])];
+        if (!notesModeRef.current || !files.length) return false;
+        event.preventDefault();
+        void imageHandler.current(files);
+        return true;
+      },
+      handleDrop: (_view, event) => {
+        const files = [...(event.dataTransfer?.files || [])];
+        if (!notesModeRef.current || !files.length) return false;
+        event.preventDefault();
+        void imageHandler.current(files);
+        return true;
+      },
       attributes: { class: "writing", "aria-label": "Markdown editor" },
     },
-    onUpdate: ({ editor }) => update(editor.getMarkdown()),
+    onUpdate: ({ editor }) => updateRef.current(editor.getMarkdown()),
   });
+  const acceptTag = (index: number) => {
+    if (!tagSuggestion || !editor) return;
+    editor
+      .chain()
+      .focus()
+      .insertContentAt(
+        { from: tagSuggestion.from, to: tagSuggestion.to },
+        tagText(tagSuggestion.items[index]) + " ",
+      )
+      .run();
+    setTagSuggestion(null);
+  };
+  tagKey.current = (event) => {
+    if (!tagSuggestion) return false;
+    if (event.key === "Escape") {
+      setTagSuggestion(null);
+      return true;
+    }
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      setTagSuggestion({
+        ...tagSuggestion,
+        index:
+          (tagSuggestion.index +
+            (event.key === "ArrowDown" ? 1 : tagSuggestion.items.length - 1)) %
+          tagSuggestion.items.length,
+      });
+      return true;
+    }
+    if (event.key === "Enter" || event.key === "Tab") {
+      acceptTag(tagSuggestion.index);
+      return true;
+    }
+    return false;
+  };
+  useEffect(() => {
+    if (!editor) return;
+    const suggest = () => {
+      const selection = editor.state.selection;
+      if (
+        !notesModeRef.current ||
+        !selection.empty ||
+        selection.$from.parent.type.name === "codeBlock" ||
+        editor.isActive("code")
+      ) {
+        setTagSuggestion(null);
+        return;
+      }
+      const before = selection.$from.parent.textBetween(
+        0,
+        selection.$from.parentOffset,
+      );
+      const match = /(?:^|[\s(])#([\p{L}\p{N}_/ -]*)$/u.exec(before);
+      if (!match) {
+        setTagSuggestion(null);
+        return;
+      }
+      const items = [...new Set(library.state.notes.flatMap((n) => n.tags))]
+        .filter(
+          (t) =>
+            t.toLocaleLowerCase().startsWith(match[1].toLocaleLowerCase()) &&
+            t !== match[1],
+        )
+        .slice(0, 6);
+      setTagSuggestion(
+        items.length
+          ? {
+              from: selection.from - match[1].length - 1,
+              to: selection.from,
+              items,
+              index: 0,
+            }
+          : null,
+      );
+    };
+    editor.on("selectionUpdate", suggest);
+    editor.on("update", suggest);
+    return () => {
+      editor.off("selectionUpdate", suggest);
+      editor.off("update", suggest);
+    };
+  }, [editor]);
+  const [imageError, setImageError] = useState("");
+  imageHandler.current = async (files) => {
+    const selected = library.state.note?.id;
+    if (!selected || library.state.note?.trashed || library.state.busy) return;
+    for (const file of files) {
+      try {
+        if (file.size > 20 * 1024 * 1024)
+          throw new Error("Images must be smaller than 20 MB.");
+        const src = await invoke<string>("library_call", {
+          request: {
+            op: "putAsset",
+            bytes: Array.from(new Uint8Array(await file.arrayBuffer())),
+          },
+        });
+        if (!notesModeRef.current || library.state.note?.id !== selected)
+          throw new Error(
+            "The note changed while the image was importing. Select the original note and insert it again.",
+          );
+        editor
+          ?.chain()
+          .focus()
+          .setImage({ src, alt: file.name.replace(/\.[^.]+$/, "") })
+          .run();
+        setImageError("");
+      } catch (e) {
+        setImageError(String(e));
+        break;
+      }
+    }
+  };
   useEffect(() => {
     if (editor) loadDocument(editor, plainText ? "" : doc.markdown);
     setSource(false);
-    scroll.current?.scrollTo(0, 0);
+    scroll.current?.scrollTo(
+      0,
+      Number(sessionStorage.getItem(`kronos.editorScroll:${doc.path}`)) || 0,
+    );
   }, [doc.path, state.revision, editor]);
   useEffect(() => {
-    editor?.setEditable(!!state.doc && !state.busy && !plainText, false);
-  }, [editor, state.doc?.path, state.busy, plainText]);
+    editor?.setEditable(
+      !!state.doc && !state.busy && !plainText && !(notesMode && note?.trashed),
+      false,
+    );
+  }, [
+    editor,
+    state.doc?.path,
+    state.busy,
+    plainText,
+    notesMode,
+    note?.trashed,
+  ]);
   useEffect(() => {
     document.documentElement.dataset.theme = dark ? "dark" : "light";
     const icon = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
@@ -554,6 +838,10 @@ function App() {
     };
   }, [editor, focusMode, source, plainText, doc.path, settingsOpen]);
   const create = (trigger = document.activeElement as HTMLElement | null) => {
+    if (notesMode) {
+      void createNote();
+      return;
+    }
     if (!state.workspace) {
       void workspace.choose();
       return;
@@ -575,9 +863,9 @@ function App() {
       if (!(e.metaKey || e.ctrlKey)) return;
       if (e.key === "s") {
         e.preventDefault();
-        void workspace.save();
+        void (notesMode ? library.save() : workspace.save());
       }
-      if (e.key === "o") {
+      if (e.key === "o" && !notesMode) {
         e.preventDefault();
         void workspace.choose();
       }
@@ -591,7 +879,7 @@ function App() {
       }
       if (e.key === "\\") {
         e.preventDefault();
-        setSidebar((s) => !s);
+        toggleSidebar();
       }
     };
     window.addEventListener("keydown", key);
@@ -616,7 +904,14 @@ function App() {
           Keep both versions
         </button>
       )}
-      {state.conflict ? (
+      {notesMode && state.conflict ? (
+        <>
+          <button onClick={() => void library.recover()}>
+            Save recovery copy
+          </button>
+          <button onClick={() => void library.discard()}>Discard edits</button>
+        </>
+      ) : state.conflict ? (
         <>
           <button type="button" onClick={() => void workspace.reload()}>
             Reload from disk
@@ -639,7 +934,7 @@ function App() {
         <button
           type="button"
           aria-label="Dismiss error"
-          onClick={workspace.dismissError}
+          onClick={notesMode ? library.dismissError : workspace.dismissError}
         >
           <X size={16} />
         </button>
@@ -667,7 +962,7 @@ function App() {
         if (event.key === "Escape" || event.key === "Tab") revealControls();
       }}
       onPointerDownCapture={revealControls}
-      className={`app ${resizing ? "resizing-sidebar" : ""} ${writing ? "focus-writing" : ""} ${isIOS ? "ios-window" : navigator.platform.startsWith("Mac") ? "mac-window" : ""} ${sidebar ? "" : "no-sidebar"} ${focusMode && !source && !plainText && state.doc ? "focus-mode" : ""}`}
+      className={`app ${notesMode ? "notes-mode" : "documents-mode"} ${noteListVisible ? "" : "no-note-list"} ${noteDetail ? "note-detail" : ""} ${resizing ? "resizing-sidebar" : ""} ${writing ? "focus-writing" : ""} ${isIOS ? "ios-window" : navigator.platform.startsWith("Mac") ? "mac-window" : ""} ${sidebar ? "" : "no-sidebar"} ${focusMode && !source && !plainText && state.doc ? "focus-mode" : ""}`}
     >
       <aside id="sidebar" className="sidebar" inert={!sidebar || writing}>
         <div
@@ -694,87 +989,104 @@ function App() {
             </button>
           )}
         </div>
-        {state.workspace && (
-          <div className="workspace-bar">
-            <button
-              className="workspace-name"
-              title={`Choose folder — ${state.workspace.root}`}
-              aria-label="Choose folder"
-              disabled={state.busy}
-              onClick={() => void workspace.choose()}
+        {notesMode ? (
+          <LibrarySidebar
+            state={noteState}
+            view={libraryView}
+            select={(view) => void selectLibraryView(view)}
+          />
+        ) : (
+          <>
+            {state.workspace && (
+              <div className="workspace-bar">
+                <button
+                  className="workspace-name"
+                  title={`Choose folder — ${state.workspace.root}`}
+                  aria-label="Choose folder"
+                  disabled={state.busy}
+                  onClick={() => void workspace.choose()}
+                >
+                  <FolderOpen size={15} />
+                  <span>{state.workspace.name}</span>
+                  <ChevronDown size={13} />
+                </button>
+                <button
+                  title={`New file in ${state.folder || state.workspace.name}`}
+                  aria-label="New document"
+                  disabled={state.busy}
+                  onClick={(event) => create(event.currentTarget)}
+                >
+                  <FilePlus size={15} />
+                </button>
+                <button
+                  title={`New folder in ${state.folder || state.workspace.name}`}
+                  aria-label="New folder"
+                  disabled={state.busy}
+                  onClick={(event) =>
+                    openFileDialog(
+                      { kind: "new-folder" },
+                      "",
+                      event.currentTarget,
+                    )
+                  }
+                >
+                  <FolderPlus size={15} />
+                </button>
+              </div>
+            )}
+            <nav
+              className="files"
+              aria-label="Workspace files"
+              onClick={() => setSettingsOpen(false)}
+              inert={state.busy}
             >
-              <FolderOpen size={15} />
-              <span>{state.workspace.name}</span>
-              <ChevronDown size={13} />
-            </button>
-            <button
-              title={`New file in ${state.folder || state.workspace.name}`}
-              aria-label="New document"
-              disabled={state.busy}
-              onClick={(event) => create(event.currentTarget)}
-            >
-              <FilePlus size={15} />
-            </button>
-            <button
-              title={`New folder in ${state.folder || state.workspace.name}`}
-              aria-label="New folder"
-              disabled={state.busy}
-              onClick={(event) =>
-                openFileDialog({ kind: "new-folder" }, "", event.currentTarget)
-              }
-            >
-              <FolderPlus size={15} />
-            </button>
-          </div>
-        )}
-        {state.workspace && (
-          <label className="search">
-            <Search size={14} />
-            <input
-              aria-label="Search files"
-              name="search"
-              autoComplete="off"
-              autoCapitalize="none"
-              autoCorrect="off"
-              spellCheck={false}
-              placeholder="Find files…"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-          </label>
-        )}
-        <nav
-          className="files"
-          aria-label="Workspace files"
-          onClick={() => setSettingsOpen(false)}
-          inert={state.busy}
-        >
-          {state.workspace && (
-            <MemoFileTree
-              key={state.workspace.root}
-              entries={state.workspace.entries}
-              active={doc.path}
-              selectedFolder={state.folder}
-              search={search}
-              onRename={startRename}
-              onOpen={openDocument}
-            />
-          )}
-          {state.workspace && !state.workspace.entries.length && (
-            <p className="empty">
-              This folder is empty. Create a document to start writing.
-            </p>
-          )}
-        </nav>
-        {!!state.workspace?.warnings.length && (
-          <details className="workspace-warnings">
-            <summary>Some items could not be loaded</summary>
-            {state.workspace.warnings.map((warning, i) => (
-              <p key={i}>{warning}</p>
-            ))}
-          </details>
+              {state.workspace && (
+                <MemoFileTree
+                  key={state.workspace.root}
+                  entries={state.workspace.entries}
+                  active={doc.path}
+                  selectedFolder={state.folder}
+                  onRename={startRename}
+                  onOpen={openDocument}
+                />
+              )}
+              {state.workspace && !state.workspace.entries.length && (
+                <p className="empty">
+                  This folder is empty. Create a document to start writing.
+                </p>
+              )}
+            </nav>
+            {!!state.workspace?.warnings.length && (
+              <details className="workspace-warnings">
+                <summary>Some items could not be loaded</summary>
+                {state.workspace.warnings.map((warning, i) => (
+                  <p key={i}>{warning}</p>
+                ))}
+              </details>
+            )}
+          </>
         )}
         <div className="sidebar-controls">
+          <div className="mode-switch" role="group" aria-label="Writing mode">
+            <button
+              title="Documents"
+              aria-label="Documents"
+              aria-pressed={!notesMode}
+              disabled={state.busy}
+              onClick={() => void switchMode("documents")}
+            >
+              <FolderOpen size={17} />
+            </button>
+            <button
+              title="Notes"
+              aria-label="Notes"
+              aria-pressed={notesMode}
+              disabled={state.busy}
+              onClick={() => void switchMode("notes")}
+            >
+              <NotebookPen size={17} />
+            </button>
+          </div>
           <button
             ref={settingsButton}
             aria-label="Settings"
@@ -856,6 +1168,20 @@ function App() {
           onClick={() => setSidebar(false)}
         />
       )}
+      {notesMode && (
+        <div
+          id="note-list"
+          className="note-list-container"
+          inert={writing || !noteListVisible}
+        >
+          <NoteList
+            state={noteState}
+            view={libraryView}
+            onOpen={(id) => void openNote(id)}
+            onCreate={() => void createNote()}
+          />
+        </div>
+      )}
       <section className="main">
         <header
           data-tauri-drag-region={isIOS ? undefined : true}
@@ -864,13 +1190,75 @@ function App() {
           <div className="breadcrumbs">
             <button
               aria-label="Toggle sidebar"
-              aria-expanded={sidebar}
-              aria-controls="sidebar"
+              aria-expanded={
+                notesMode
+                  ? sidebar || (noteListVisible && !noteDetail)
+                  : sidebar
+              }
+              aria-controls={notesMode ? "sidebar note-list" : "sidebar"}
               title="Toggle sidebar (⌘\\)"
-              onClick={() => setSidebar(!sidebar)}
+              onClick={toggleSidebar}
             >
               <PanelLeft size={17} />
             </button>
+            {notesMode && note && (
+              <span className="note-actions">
+                <NoteHistory id={note.id} busy={state.busy || note.trashed} />
+                <button
+                  disabled={state.busy}
+                  onClick={() => void library.export(note.id)}
+                >
+                  Export
+                </button>
+                <input
+                  ref={imageInput}
+                  hidden
+                  type="file"
+                  accept="image/png,image/jpeg,image/gif,image/webp"
+                  multiple
+                  onChange={(e) => {
+                    void imageHandler.current([...(e.target.files || [])]);
+                    e.target.value = "";
+                  }}
+                />
+                <button
+                  aria-label="Insert image"
+                  title="Insert image"
+                  disabled={state.busy || note.trashed || source}
+                  onClick={() => imageInput.current?.click()}
+                >
+                  <ImagePlus size={16} />
+                </button>
+                <button
+                  aria-label={note.pinned ? "Unpin note" : "Pin note"}
+                  title={note.pinned ? "Unpin note" : "Pin note"}
+                  disabled={state.busy || note.trashed}
+                  onClick={() => void library.change({ pinned: !note.pinned })}
+                >
+                  <Pin size={16} />
+                </button>
+                <button
+                  aria-label={note.archived ? "Unarchive note" : "Archive note"}
+                  title={note.archived ? "Unarchive note" : "Archive note"}
+                  disabled={state.busy || note.trashed}
+                  onClick={() =>
+                    void library.change({ archived: !note.archived })
+                  }
+                >
+                  <Archive size={16} />
+                </button>
+                <button
+                  aria-label={note.trashed ? "Restore note" : "Trash note"}
+                  title={note.trashed ? "Restore note" : "Trash note"}
+                  disabled={state.busy}
+                  onClick={() =>
+                    void library.change({ trashed: !note.trashed })
+                  }
+                >
+                  {note.trashed ? <Undo2 size={16} /> : <Trash2 size={16} />}
+                </button>
+              </span>
+            )}
             {isIOS && (
               <span className="mobile-title">{doc.name || "Anubis"}</span>
             )}
@@ -896,7 +1284,13 @@ function App() {
                               ? cloud.uploaded
                                 ? "Uploaded to iCloud"
                                 : "Saved locally · Upload pending"
-                              : "Saved"
+                              : notesMode
+                                ? noteState.sync === "synced"
+                                  ? "Synced"
+                                  : noteState.sync === "syncing"
+                                    ? "Syncing…"
+                                    : "Saved locally"
+                                : "Saved"
                   : "")}
             </span>
             <div
@@ -1034,6 +1428,42 @@ function App() {
               <X size={18} />
             </button>
           </div>
+          {notesMode && (
+            <>
+              <LibraryTools busy={state.busy} />
+              <fieldset>
+                <legend>iCloud note sync</legend>
+                <p>
+                  Sync your library between your Mac, iPhone, and iPad. Local
+                  saving works offline.
+                </p>
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={syncEnabled}
+                    onChange={(e) => {
+                      setSyncEnabled(e.target.checked);
+                      localStorage.setItem(
+                        "kronos.notesSync",
+                        String(e.target.checked),
+                      );
+                      if (e.target.checked) void library.sync();
+                    }}
+                  />
+                  Enable iCloud sync
+                </label>
+                <button
+                  disabled={state.busy || !syncEnabled}
+                  onClick={() => void library.sync()}
+                >
+                  Sync now
+                </button>
+                {noteState.syncError && (
+                  <p role="alert">{noteState.syncError}</p>
+                )}
+              </fieldset>
+            </>
+          )}
           <fieldset>
             <legend>Theme</legend>
             <p>Choose the colors for your writing space.</p>
@@ -1133,38 +1563,53 @@ function App() {
         <main
           ref={scroll}
           className="page-scroll"
+          onScroll={(e) => {
+            if (doc.path)
+              sessionStorage.setItem(
+                `kronos.editorScroll:${doc.path}`,
+                String(e.currentTarget.scrollTop),
+              );
+          }}
           onInputCapture={beginWriting}
         >
           {!state.doc ? (
             <div className="workspace-empty">
               <FolderOpen size={32} />
               <h1>
-                {state.workspace
-                  ? "Choose a file to begin"
-                  : "Your writing, in your folder"}
+                {notesMode
+                  ? "Your note library"
+                  : state.workspace
+                    ? "Choose a file to begin"
+                    : "Your writing, in your folder"}
               </h1>
               <p>
-                {state.workspace
-                  ? "Open a document from the sidebar, or create a new one."
-                  : "Open a local folder to browse Markdown and text files, including subfolders."}
+                {notesMode
+                  ? "Create a note to start writing. Notes are saved privately in Anubis."
+                  : state.workspace
+                    ? "Open a document from the sidebar, or create a new one."
+                    : "Open a local folder to browse Markdown and text files, including subfolders."}
               </p>
               <button
                 className="primary"
                 disabled={state.busy || !state.ready}
                 onClick={(event) =>
-                  state.workspace
+                  notesMode || state.workspace
                     ? create(event.currentTarget)
                     : void workspace.choose()
                 }
               >
-                {state.workspace ? "New document" : "Choose folder"}
+                {notesMode
+                  ? "New note"
+                  : state.workspace
+                    ? "New document"
+                    : "Choose folder"}
               </button>
             </div>
           ) : source || plainText ? (
             <textarea
               className="source writing"
               aria-label={plainText ? "Text editor" : "Markdown source"}
-              disabled={state.busy}
+              disabled={state.busy || (notesMode && note?.trashed)}
               spellCheck={false}
               autoCapitalize="none"
               autoCorrect="off"
@@ -1172,11 +1617,53 @@ function App() {
               onChange={(e) => update(e.target.value)}
             />
           ) : null}
+          {notesMode && !source && tagSuggestion && (
+            <div
+              className="tag-suggestions"
+              role="listbox"
+              aria-label="Tag suggestions"
+            >
+              {tagSuggestion.items.map((tag, index) => (
+                <button
+                  key={tag}
+                  role="option"
+                  aria-selected={index === tagSuggestion.index}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => acceptTag(index)}
+                >
+                  {tagText(tag)}
+                </button>
+              ))}
+            </div>
+          )}
           <div hidden={!state.doc || source || plainText}>
             <EditorContent editor={editor} />
           </div>
         </main>
       </section>
+      {notesMode &&
+        noteState.syncError &&
+        !settingsOpen &&
+        !state.error &&
+        !imageError && (
+          <div className="action-error" role="alert">
+            <span>{noteState.syncError}</span>
+            <button disabled={state.busy} onClick={() => void library.sync()}>
+              Retry sync
+            </button>
+          </div>
+        )}
+      {imageError && (
+        <div role="alert" className="action-error">
+          <span>{imageError}</span>
+          <button
+            aria-label="Dismiss image error"
+            onClick={() => setImageError("")}
+          >
+            <X size={16} />
+          </button>
+        </div>
+      )}
       {!modal && errorMessage}
       <dialog
         ref={fileDialog}

@@ -2,6 +2,7 @@ import { invoke, isTauri } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { confirm } from "@tauri-apps/plugin-dialog";
+import { library } from "./library";
 import { isIOS } from "./platform";
 
 export type Cloud = {
@@ -437,14 +438,17 @@ export class WorkspaceController {
       if (payload) void this.refresh();
     });
     const unclose = await listen("workspace-before-exit", async () => {
-      if (await this.save()) await invoke("finish_exit");
+      if ((await this.save()) && (await library.save()))
+        await invoke("finish_exit");
     });
     const visibility = () => {
-      if (document.visibilityState === "hidden") void this.save();
-      else void this.refresh();
+      if (document.visibilityState === "hidden") {
+        void this.save();
+        void library.save();
+      } else void this.refresh();
     };
     const background = () => {
-      void this.save().finally(() => {
+      void Promise.all([this.save(), library.save()]).finally(() => {
         if (isIOS) void invoke("finish_background_save");
       });
     };

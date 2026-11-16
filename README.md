@@ -1,6 +1,6 @@
 # Anubis
 
-Anubis is a Markdown and text editor for desktop and iOS, built with React, Tiptap, and Tauri 2. Documents are real files in a folder you choose. There is no standalone web app or browser document store.
+Anubis is a Markdown and text editor for desktop and iOS, built with React, Tiptap, and Tauri 2. Documents are real files in a folder you choose. Notes use a separate app-managed library. There is no standalone web app or browser document store.
 
 ## Run and build
 
@@ -89,11 +89,39 @@ The ordinary test suite does not touch iCloud. The native macOS folder and cloud
 ## Folder workspaces
 
 - Choose a folder on first launch. Anubis remembers it in its native app-data directory and reopens it next time.
-- The sidebar lists `.md`, `.markdown`, `.mdown`, and `.txt` files recursively, with expandable subfolders. Empty folders are shown too. Search matches file/folder paths and reveals matching descendants.
+- The sidebar lists `.md`, `.markdown`, `.mdown`, and `.txt` files recursively, with expandable subfolders. Empty folders are shown too.
 - Markdown opens in the formatted editor with an optional source view. Plain text always opens as literal text. Opening or browsing a file does not rewrite it.
 - Click a folder name to select the destination for new files and folders; use its arrow to expand or collapse it independently. Click the selected folder name again to return the creation destination to the workspace root. The file-plus and folder-plus buttons create a document or subfolder there.
 - Each file's **⋯** menu offers Rename and Delete. Deletion requires confirmation and moves the file to the OS Trash/Recycle Bin; it does not recursively delete folders. Existing files are never replaced by create or rename operations.
 - Click the workspace name at the top of the sidebar to choose another local folder. Native filesystem notifications and window focus automatically refresh the listing and clean open documents.
+
+## Note library
+
+Use **Documents** and **Notes** at the bottom of the sidebar to switch modes. Documents retain their folder workflow. Notes have a library/tag sidebar, a resizable note list, and the same Markdown editor. Narrow layouts show the note list and editor sequentially. Each mode retains its own sidebar width and active item.
+
+Notes save into `library/notes.sqlite3` inside Tauri's app-data directory. Content never goes into webview storage. Local saving works without an account or network. Notes support full-text search, title/created/edited sorting, pinned notes, Archive, recoverable Trash, and built-in Untagged, Today, and To-do views. History retains earlier saves; restoring a version preserves the current content as another revision. Draft journals survive failed saves. Mode changes and quit are blocked when unsaved edits need recovery.
+
+Use `#work`, `#work/project`, or `#meeting notes#` in Markdown. Tags are indexed from text and support autocomplete, clickable filtering, nested disclosure, pinning, renaming, and removal. Removing a tag keeps its notes. Code, image/link syntax, and escaped hashtags are excluded. Tag pin preferences are currently local to the device.
+
+Paste, drop, or choose PNG, JPEG, GIF, or WebP images (up to 20 MB each). The iOS file input offers system image selection. Images are stored as immutable, content-addressed attachments; Markdown contains `anubis-asset:` references. The original files can be removed after import. Edit alt text in source mode. **Export** creates a ZIP containing `note.md` and its referenced images with relative paths. On iOS, exports use the system share sheet.
+
+**Settings → Note library** imports Markdown/text files or an Anubis JSON backup. **Back up library** includes notes, images, Trash, drafts, revision history, and pinned-tag preferences. Restoring adds independent copies and never overwrites existing notes. Backup imports currently have a 256 MB limit. Plain Markdown import does not import sibling image files; use an Anubis backup for portable images. Note text has a 10 MB limit. Revisions and unused images are deliberately retained; automatic compaction and attachment cleanup are not implemented yet.
+
+### iCloud note sync (provisioning required)
+
+The CloudKit transport targets the private database in `iCloud.com.stubbornspace.kronos`, separate from Document-folder iCloud Drive access. It uses incremental zone change tokens, version-checked record uploads, and a persistent local outbox. Cloud note bodies and images use CKAsset. Conflicting edits preserve the local version as a separate **Conflict copy**, with prior content also in History. Account changes and unexpected permanent cloud deletions pause sync without removing local data.
+
+Sync is off by default. **Settings → iCloud note sync** enables foreground synchronization approximately once a minute; **Sync now** runs a pass immediately. Each pass fetches one page and sends up to five queued notes, retaining pending work for subsequent passes. Saving locally and confirmed synchronization have different status labels. Pinned-tag preferences, local history, and drafts are included in backups but are not uploaded as separate cloud records.
+
+Ordinary builds remain usable without CloudKit entitlements. To validate actual sync:
+
+1. Register `iCloud.com.stubbornspace.kronos` under your Apple Developer team and associate it with the existing `com.stubbornspace.kronos` app identifier.
+2. Configure development signing/provisioning for that container. `src-tauri/CloudKit.entitlements` is a development template; keep team-specific application identifiers and provisioning profiles local.
+3. On macOS, use `npm run desktop:build -- --config src-tauri/tauri.cloudkit.conf.json --bundles app` with your signing identity/profile configured locally. The optional config adds the container Info.plist key and entitlements.
+4. For iOS, merge the same config when building and enable iCloud/CloudKit in Xcode's Signing & Capabilities for the same container. Keep signing-team settings out of Git. The normal iOS project remains usable without CloudKit.
+5. Test with an isolated development library on two signed-in devices before using real notes. Verify offline edits, concurrent edits, images, Trash/restore, interrupted transfer, sign-out/account changes, and recovery. Deploy the schema and use production entitlements only after that validation.
+
+CloudKit transport compiles, and local merge/outbox behavior has regression tests. Registration, provisioning, and live multi-device sync must be verified separately; mocked UI tests do not prove them. The transport currently uses CloudKit operations directly rather than CKSyncEngine. Remote changes arrive during foreground sync passes, not through push notifications.
 
 ## Saving and recovery
 

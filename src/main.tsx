@@ -32,25 +32,18 @@ import {
   Sun,
   Moon,
   AlignVerticalSpaceAround,
-  Bold,
-  Italic,
-  List,
-  Quote,
-  Table,
-  Heading2,
   X,
   Trash2,
   Pencil,
   NotebookPen,
-  Archive,
-  Pin,
-  Undo2,
   ImagePlus,
 } from "lucide-react";
 import { workspace, type Entry } from "./workspace";
-import { LibraryTools, NoteHistory } from "./library-tools";
+import { LibraryTools, NoteActions } from "./library-tools";
 import { NoteTags } from "./tag-extension";
 import { tagText } from "./tags";
+import { ImageTools } from "./image-tools";
+import { SelectionToolbar } from "./selection-toolbar";
 import { NoteImage } from "./note-image";
 import { library } from "./library";
 import { LibrarySidebar, NoteList, type LibraryView } from "./library-ui";
@@ -624,7 +617,7 @@ function App() {
     extensions: [
       StarterKit.configure({ link: { openOnClick: false } }),
       Markdown,
-      NoteImage,
+      NoteImage.configure({ allowBase64: true }),
       NoteTags.configure({
         active: () => notesModeRef.current,
         select: (tag) => tagSelect.current(tag),
@@ -739,21 +732,58 @@ function App() {
   }, [editor]);
   const [imageError, setImageError] = useState("");
   imageHandler.current = async (files) => {
-    const selected = library.state.note?.id;
-    if (!selected || library.state.note?.trashed || library.state.busy) return;
+    const insertingNote = notesModeRef.current;
+    const selected = insertingNote
+      ? library.state.note?.id
+      : workspace.state.doc?.path;
+    const root = workspace.state.workspace?.root;
+    if (
+      !selected ||
+      state.busy ||
+      plainText ||
+      source ||
+      (insertingNote && library.state.note?.trashed)
+    )
+      return;
     for (const file of files) {
       try {
         if (file.size > 20 * 1024 * 1024)
           throw new Error("Images must be smaller than 20 MB.");
-        const src = await invoke<string>("library_call", {
-          request: {
-            op: "putAsset",
-            bytes: Array.from(new Uint8Array(await file.arrayBuffer())),
-          },
-        });
-        if (!notesModeRef.current || library.state.note?.id !== selected)
+        if (!/^image\/(png|jpeg|gif|webp)$/.test(file.type))
+          throw new Error("Choose a PNG, JPEG, GIF, or WebP image.");
+        const src = insertingNote
+          ? await invoke<string>("library_call", {
+              request: {
+                op: "putAsset",
+                bytes: Array.from(new Uint8Array(await file.arrayBuffer())),
+              },
+            })
+          : await new Promise<string>((resolve, reject) => {
+              const reader = new FileReader();
+              reader.onload = () => resolve(String(reader.result));
+              reader.onerror = () =>
+                reject(new Error("Could not read the image."));
+              reader.readAsDataURL(file);
+            });
+        if (
+          notesModeRef.current !== insertingNote ||
+          (insertingNote
+            ? library.state.note?.id !== selected
+            : workspace.state.doc?.path !== selected ||
+              workspace.state.workspace?.root !== root)
+        )
           throw new Error(
-            "The note changed while the image was importing. Select the original note and insert it again.",
+            "The document changed while the image was importing. Select the original item and insert it again.",
+          );
+        if (
+          !insertingNote &&
+          new TextEncoder().encode(
+            (editor?.getMarkdown() || "") + src + file.name,
+          ).length >
+            10 * 1024 * 1024 - 128
+        )
+          throw new Error(
+            "This image would exceed the document’s 10 MB editing limit.",
           );
         editor
           ?.chain()
@@ -1182,6 +1212,18 @@ function App() {
           />
         </div>
       )}
+      {editor &&
+        !source &&
+        !plainText &&
+        state.doc &&
+        !state.busy &&
+        !settingsOpen &&
+        !modal && (
+          <React.Fragment key={doc.path}>
+            <SelectionToolbar editor={editor} />
+            <ImageTools editor={editor} />
+          </React.Fragment>
+        )}
       <section className="main">
         <header
           data-tauri-drag-region={isIOS ? undefined : true}
@@ -1201,64 +1243,6 @@ function App() {
             >
               <PanelLeft size={17} />
             </button>
-            {notesMode && note && (
-              <span className="note-actions">
-                <NoteHistory id={note.id} busy={state.busy || note.trashed} />
-                <button
-                  disabled={state.busy}
-                  onClick={() => void library.export(note.id)}
-                >
-                  Export
-                </button>
-                <input
-                  ref={imageInput}
-                  hidden
-                  type="file"
-                  accept="image/png,image/jpeg,image/gif,image/webp"
-                  multiple
-                  onChange={(e) => {
-                    void imageHandler.current([...(e.target.files || [])]);
-                    e.target.value = "";
-                  }}
-                />
-                <button
-                  aria-label="Insert image"
-                  title="Insert image"
-                  disabled={state.busy || note.trashed || source}
-                  onClick={() => imageInput.current?.click()}
-                >
-                  <ImagePlus size={16} />
-                </button>
-                <button
-                  aria-label={note.pinned ? "Unpin note" : "Pin note"}
-                  title={note.pinned ? "Unpin note" : "Pin note"}
-                  disabled={state.busy || note.trashed}
-                  onClick={() => void library.change({ pinned: !note.pinned })}
-                >
-                  <Pin size={16} />
-                </button>
-                <button
-                  aria-label={note.archived ? "Unarchive note" : "Archive note"}
-                  title={note.archived ? "Unarchive note" : "Archive note"}
-                  disabled={state.busy || note.trashed}
-                  onClick={() =>
-                    void library.change({ archived: !note.archived })
-                  }
-                >
-                  <Archive size={16} />
-                </button>
-                <button
-                  aria-label={note.trashed ? "Restore note" : "Trash note"}
-                  title={note.trashed ? "Restore note" : "Trash note"}
-                  disabled={state.busy}
-                  onClick={() =>
-                    void library.change({ trashed: !note.trashed })
-                  }
-                >
-                  {note.trashed ? <Undo2 size={16} /> : <Trash2 size={16} />}
-                </button>
-              </span>
-            )}
             {isIOS && (
               <span className="mobile-title">{doc.name || "Anubis"}</span>
             )}
@@ -1333,6 +1317,9 @@ function App() {
               >
                 <AlignVerticalSpaceAround size={17} />
               </button>
+              {notesMode && note && (
+                <NoteActions key={note.id} note={note} busy={state.busy} />
+              )}
               {!source && !plainText && (
                 <span className="divider" aria-hidden="true" />
               )}
@@ -1349,59 +1336,30 @@ function App() {
               )}
               {!source && !plainText && (
                 <div className="formatting">
+                  <input
+                    ref={imageInput}
+                    hidden
+                    type="file"
+                    accept="image/png,image/jpeg,image/gif,image/webp"
+                    multiple
+                    onChange={(e) => {
+                      void imageHandler.current([...(e.target.files || [])]);
+                      e.target.value = "";
+                    }}
+                  />
                   <button
-                    title="Bold (⌘B)"
-                    aria-label="Bold"
-                    onClick={() => editor?.chain().focus().toggleBold().run()}
-                  >
-                    <Bold size={14} />
-                  </button>
-                  <button
-                    title="Italic (⌘I)"
-                    aria-label="Italic"
-                    onClick={() => editor?.chain().focus().toggleItalic().run()}
-                  >
-                    <Italic size={14} />
-                  </button>
-                  <button
-                    title="Heading"
-                    aria-label="Heading"
-                    onClick={() =>
-                      editor?.chain().focus().toggleHeading({ level: 2 }).run()
+                    aria-label="Insert image"
+                    title="Insert image"
+                    disabled={
+                      state.busy ||
+                      !state.doc ||
+                      (notesMode && !!note?.trashed) ||
+                      source ||
+                      plainText
                     }
+                    onClick={() => imageInput.current?.click()}
                   >
-                    <Heading2 size={16} />
-                  </button>
-                  <button
-                    title="Bullet list"
-                    aria-label="Bullet list"
-                    onClick={() =>
-                      editor?.chain().focus().toggleBulletList().run()
-                    }
-                  >
-                    <List size={16} />
-                  </button>
-                  <button
-                    title="Quote"
-                    aria-label="Quote"
-                    onClick={() =>
-                      editor?.chain().focus().toggleBlockquote().run()
-                    }
-                  >
-                    <Quote size={15} />
-                  </button>
-                  <button
-                    title="Insert table"
-                    aria-label="Insert table"
-                    onClick={() =>
-                      editor
-                        ?.chain()
-                        .focus()
-                        .insertTable({ rows: 3, cols: 3, withHeaderRow: true })
-                        .run()
-                    }
-                  >
-                    <Table size={15} />
+                    <ImagePlus size={16} />
                   </button>
                 </div>
               )}

@@ -4,7 +4,7 @@ Anubis is a Markdown and text editor for desktop and iOS, built with React, Tipt
 
 ## Run and build
 
-Install Node.js 22.12+, Rust 1.90+ (stable), and the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/) for your OS. macOS requires Xcode Command Line Tools and macOS 14 or newer.
+Install Node.js 22.12+, Rust 1.90+ (stable), and the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/) for your OS. macOS requires full Xcode 26 or newer (including its command-line tools) to compile the app icon, and macOS 14 or newer. If `xcode-select -p` points to CommandLineTools, set `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer` for Tauri/Xcode commands.
 
 ```sh
 npm ci
@@ -42,13 +42,17 @@ npm run ios:dev -- --open
 This starts Vite and opens `src-tauri/gen/apple/anubis.xcodeproj`. Select the `anubis_iOS` scheme and an iPhone or iPad simulator, then Run in Xcode. `npm run ios:dev -- "SIMULATOR NAME"` can build and launch a named simulator directly when the installed runtime matches the Xcode SDK. If the CLI reports a missing Simulator SDK despite an older runtime being installed, use `--open` and select that installed simulator in Xcode.
 
 ```sh
-# Standalone unsigned simulator build (matching Xcode/runtime versions):
+# Unsigned simulator app + native UI-test build (no matching runtime required):
 npm run ios:simulator
 # Device archive / distribution build:
 npm run ios:build
 ```
 
-For a standalone simulator app when SDK/runtime versions differ, run `npm run ios:build -- --debug --open`, then build and run the simulator target in Xcode. This embeds the built frontend instead of connecting to Vite.
+`npm run ios:simulator` uses `scripts/ios-simulator.mjs`: it selects full Xcode (respecting an existing `DEVELOPER_DIR`), starts the Tauri build helper, regenerates the project, builds the generic simulator app and UI-test target, and stops its helper. Output is under `src-tauri/target/ios-simulator/Build/Products/`. The app embeds the built frontend. A matching installed simulator runtime is required to **run** it, but not to compile it. The script takes no arguments; use `ios:build` for device/signing options. It opens Xcode as part of starting the Tauri helper.
+
+For manual `ios:dev`/`ios:build -- --open` workflows, after the CLI opens Xcode, run `xcodegen generate --spec src-tauri/gen/apple/project.yml` before building the native UI tests. Tauri 2.12.4 rewrites the test target's bundle identifier/product name to the app's values; regenerating restores the distinct `.uitests` identifier and shared test scheme. Leave the Tauri helper running while Xcode builds. Regeneration also removes local signing-team settings, so select a team locally again for physical-device builds and do not commit that change.
+
+Physical-device development uses `TAURI_DEV_HOST` for Vite and its HMR WebSocket on port 1421. The development-only CSP permits WebSocket connections to the selected host; release CSP remains restricted to app/IPC connections.
 
 Physical-device installation and distribution require an Apple development team and provisioning. Set `APPLE_DEVELOPMENT_TEAM` locally, or select your team in Xcode. Do not commit signing identities or provisioning profiles. The existing bundle identifier `com.stubbornspace.kronos` is retained. The generated Xcode project is included; `npm run ios:init` can regenerate it, and `xcodegen generate --spec src-tauri/gen/apple/project.yml` updates it after changing the project definition.
 
@@ -117,11 +121,13 @@ Ordinary builds remain usable without CloudKit entitlements. To validate actual 
 
 1. Register `iCloud.com.stubbornspace.kronos` under your Apple Developer team and associate it with the existing `com.stubbornspace.kronos` app identifier.
 2. Configure development signing/provisioning for that container. `src-tauri/CloudKit.entitlements` is a development template; keep team-specific application identifiers and provisioning profiles local.
-3. On macOS, use `npm run desktop:build -- --config src-tauri/tauri.cloudkit.conf.json --bundles app` with your signing identity/profile configured locally. The optional config adds the container Info.plist key and entitlements.
+3. On macOS, use a local signing config with `npm run desktop:build -- --config /absolute/path/to/tauri.signing.json --bundles app,dmg`. The config must set `bundle.macOS.infoPlist` to the absolute path of `src-tauri/MacCloudKitInfo.plist`, `entitlements` to a local copy of `CloudKit.entitlements` extended with the profile's `com.apple.application-identifier` and `com.apple.developer.team-identifier`, and `signingIdentity` to a certificate included in that profile. Set `bundle.macOS.files` to `{ "embedded.provisionprofile": "/absolute/path/to/profile.provisionprofile" }`. Keep these signing files outside Git. The checked-in CloudKit config is only a template; adding its container key alone does not provision or sign the app.
 4. For iOS, merge the same config when building and enable iCloud/CloudKit in Xcode's Signing & Capabilities for the same container. Keep signing-team settings out of Git. The normal iOS project remains usable without CloudKit.
 5. Test with an isolated development library on two signed-in devices before using real notes. Verify offline edits, concurrent edits, images, Trash/restore, interrupted transfer, sign-out/account changes, and recovery. Deploy the schema and use production entitlements only after that validation.
 
 CloudKit transport compiles, and local merge/outbox behavior has regression tests. Registration, provisioning, and live multi-device sync must be verified separately; mocked UI tests do not prove them. The transport currently uses CloudKit operations directly rather than CKSyncEngine. Remote changes arrive during foreground sync passes, not through push notifications.
+
+The ordinary `desktop:build` command produces a local-only build. For an iCloud-enabled delivery, verify the signed app's container and environment entitlements, matching app/team identifiers, embedded profile, and inclusion of the target Mac's **Provisioning UDID** in a development profile. Verify the app inside the finished DMG as well. Development-signed builds are for provisioned devices and are not notarized public releases. A development-signed Apple Silicon macOS DMG with the requested container and an updated profile covering all five registered Macs was built and verified on November 15, 2026; the user subsequently confirmed successful launch and CloudKit sync on both Macs. Offline/conflict scenarios, image transfers, and iPhone/iPad sync still need separate validation.
 
 ## Saving and recovery
 
@@ -156,4 +162,12 @@ Rust tests perform real filesystem operations in temporary folders, including re
 
 ## Scope and background
 
-See [analysis/REPORT.md](analysis/REPORT.md) for the initial Typora feature research. The interface, editor integration, and filesystem implementation are original code. Advanced Markdown features, drag-and-drop moves, multiple workspaces, folder rename/delete, automatic conflict merging, signed distribution, and Android support are not implemented.
+See [analysis/REPORT.md](analysis/REPORT.md) for the initial Typora feature research. The interface, editor integration, and filesystem implementation are original code. Advanced Markdown features, drag-and-drop moves, multiple workspaces, folder rename/delete, automatic conflict merging, notarized public distribution, and Android support are not implemented.
+
+The shared editing toolbar's **Insert image** button is available for Markdown Documents and Notes. Documents embed PNG, JPEG, GIF, or WebP images as data URLs in the Markdown file, keeping it self-contained within the 10 MB document limit; external Markdown viewers must support data URLs to display them. Notes continue to use private attachments. Image insertion is unavailable in plain-text and source mode.
+
+Select text in the Markdown editor to show the floating formatting toolbar (Bold, Italic, Heading, Bullet list, Quote, and Table). Press Tab from a text selection to focus the toolbar, use arrow keys to move between actions, and Escape to dismiss it. Insert image stays in the top toolbar.
+
+Select an inserted image to show **Crop & resize**, or drag its bottom corner handles to resize while keeping its aspect ratio. The dialog provides a display width and crop controls for each edge, a live preview, Reset crop, and Apply/Cancel. Changes are undoable and preserve the original image bytes. Edited images use HTML `<img>` tags with width and Anubis `data-crop-*` attributes in Markdown; other viewers may ignore the crop attributes and show the uncropped original. Crop editing supports app-managed Notes attachments and embedded Document images, not external image URLs.
+
+macOS builds require full Xcode 26 or newer for Icon Composer asset compilation. `src-tauri/icons/Anubis.icon` retains an unchanged copy of the supplied artwork and disables extra layer glass effects. The Rust build script compiles `Assets.car` and the legacy fallback into ignored `src-tauri/target/app-icon/`; Tauri bundles both with the matching `CFBundleIconName`. Keep `MacInfo.plist` and `MacCloudKitInfo.plist` icon keys aligned. The iOS icon configuration remains separate.

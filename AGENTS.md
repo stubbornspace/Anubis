@@ -9,12 +9,15 @@ Anubis is a desktop and iOS Markdown and plain-text editor built with React, Typ
 - `src/library.ts`: Notes controller, local autosave, recovery, organization, and sync state.
 - `src/library-ui.tsx` and `src/library-tools.tsx`: library navigation, note list, tag controls, history, and backup/import UI.
 - `src/tags.ts` and `src/tag-extension.ts`: Markdown tag parsing, replacement, decorations, and interaction.
-- `src/note-image.ts`: editor image rendering for app-managed attachment references.
+- `src/note-image.ts`: image rendering, resize handles, and Markdown geometry persistence.
+- `src/image-tools.tsx` and `src/image-geometry.ts`: crop/size dialog, source resolution, and bounded image geometry.
+- `src/selection-toolbar.tsx`: shared Tiptap selection formatting toolbar and keyboard interaction.
 - `src/style.css`: layout and component styles.
 - `src/ocean.css` and `src/atom-one.css`: The Blues and Atom One light/dark tokens.
 - `src-tauri/src/workspace.rs`: native file operations and filesystem tests.
 - `src-tauri/src/lib.rs`: Tauri commands, folder picker, watcher, and lifecycle handling.
 - `src-tauri/tauri.conf.json`: app identity, window configuration, and bundles.
+- `src-tauri/icons/Anubis.icon`: modern macOS icon composition; `build.rs` compiles it with Xcode into ignored build output. Bundle its `Assets.car` and fallback ICNS, and retain matching icon keys in both macOS Info.plist variants to avoid the system-added legacy icon frame.
 - `public/icons/anubis-app.png`: source app icon; `anubis-light.png` and `anubis-dark.png`: themed sidebar logos.
 - `tests/native-fixture.ts`: mocked Tauri boundary for Playwright tests.
 - `src-tauri/plugins/ios-workspace/`: native iOS folder bookmarks, security-scoped access, and background save coordination.
@@ -37,6 +40,12 @@ Use rem units for scalable interface dimensions and app-layout container queries
 
 Documents and Notes use icon-only mode buttons in the bottom sidebar control row beside Settings and the theme toggle. Keep hover labels, accessible names, and the selected mode indication. Do not restore the document sidebar search or the Notes sidebar's “Saved on this device” label.
 
+Notes-specific History, Export, Pin, Archive, and Trash/Restore actions live in the Note actions dropdown beside Source and Focus. Preserve keyboard navigation, Escape/outside dismissal, and focus restoration after actions and the History dialog.
+
+Bold, Italic, Heading, Bullet list, Quote, and Table belong in Tiptap’s selection toolbar, shown beside selected editor text in both Markdown modes. Preserve selection during formatting, keyboard access, Escape dismissal, and touch target sizing. Hide it in source/plain-text mode and when editing is unavailable.
+
+Insert image stays in the top editing toolbar, available in both Markdown modes. Documents embed supported raster images as data URLs within the document size limit; Notes use private attachment references. Do not store Document images in the Notes library. Keep image insertion unavailable for plain-text and source mode.
+
 Documents use folder navigation and the editor; Notes use library/tag navigation, a resizable note list, and the shared Markdown editor. Preserve each mode's sidebar width and active item. Keep one sidebar toggle in the editor header for both modes; in Notes it collapses/restores both navigation columns. The keyboard shortcut must use the same behavior. Do not add a duplicate toggle in the note list or a separate editor note-list toggle. Preserve access to navigation in narrow and touch layouts.
 
 Align the Notes sidebar toggle and editor toolbar with the Documents header, with navigation expanded or collapsed. Keep the native macOS header's 64px geometry and window-control clearance. Let controls wrap only when available space requires it; do not force Notes breadcrumbs or toolbar groups to full-width rows on desktop.
@@ -48,8 +57,9 @@ Focus mode positions the typing line about 40% down the editor and fades surroun
 - Documents belong in the user's selected local folder. Notes belong in the app-private SQLite library and attachment directory. Never store either kind of content in localStorage or sessionStorage.
 - `src/library.ts` and `src-tauri/src/library.rs` own note autosave, revision checks, draft recovery, backups, and the sync outbox. `src-tauri/src/note_sync.rs` and `src-tauri/apple/NoteSync.m` own CloudKit transport. Flush both controllers before quit/background completion.
 - Preserve library migrations, revisions, drafts, and attachment hashes. Sync acknowledges only the exact uploaded revision; never clear newer queued edits or silently overwrite a cloud conflict. Keep the library bound to its first iCloud account.
+- Keep CloudKit network waits outside the frontend save/navigation queue. Coalesce concurrent sync requests and reconcile only clean, unchanged editor snapshots; never replace edits made while IPC was awaiting a response. Preserve the native exact-revision acknowledgement rule.
 - Keep Notes usable offline. A sync that changes only metadata must not reload editor content or reset selection, undo history, or source mode. Preserve failed drafts until a successful save/recovery copy or explicitly confirmed discard.
-- Notes tags derive from Markdown, including nested and multiword tags. Exclude code, escaped hashtags, and image/link syntax. Tag removal must retain the notes. Keep attachment references stable; resolving an image for display must not rewrite its Markdown.
+- Notes tags derive from Markdown, including nested and multiword tags. Exclude code, escaped hashtags, and image/link syntax. Tag removal must retain the notes. Keep attachment references stable; resolving an image for display must not rewrite its Markdown. Crop and resize edits preserve original bytes and use width/data-crop attributes on HTML image tags in Markdown. Preserve these through reload, source mode, history, backup/export, and sync. Do not flatten or replace originals silently; external viewers may ignore crop metadata.
 - Backup imports add independent copies without overwriting existing notes. Preserve images, revisions, drafts, Trash, and pinned-tag preferences. Do not migrate document folders into Notes automatically or introduce attachment/revision cleanup without a retention policy covering recovery and unsynced data.
 - CloudKit tests require explicit opt-in and an isolated test container/zone. Never test by modifying the user's live library. Signing identities and provisioning remain local.
 - Preserve autosave ordering and flush pending changes before navigation, workspace changes, and quit.
@@ -81,7 +91,7 @@ Choose checks appropriate to the change:
 - Rust compilation: `npm run desktop:check`.
 - iPhone/iPad UI: `npx playwright test --project=iphone --project=ipad`. These use mocked IPC and cannot prove Files access or iOS lifecycle behavior.
 - iOS development: `npm run ios:dev -- --open`, select `anubis_iOS` and a simulator in Xcode. Its Test action exercises native folder access, editing, relaunch, and Trash.
-- iOS simulator build: `npm run ios:simulator`; when CLI SDK/runtime versions differ, build through the Xcode project with an installed simulator as documented in README.
+- iOS simulator build: `npm run ios:simulator` automates the Tauri helper, project regeneration, and generic Xcode build-for-testing through `scripts/ios-simulator.mjs`. It needs full Xcode but not a matching installed runtime to compile. Native test execution still requires a simulator/device. Keep its helper cleanup and distinct UI-test bundle identifier intact.
 - Formatting: Prettier for frontend files, `cargo fmt --manifest-path src-tauri/Cargo.toml --check` for Rust, and `git diff --check` for whitespace.
 
 Add meaningful regression coverage for changes to persistence, file operations, focus handling, or interaction behavior. Pure documentation and small cosmetic changes do not require a full test suite or installer build. Mocked UI tests do not prove native dialogs, window controls, signing, or OS integration work.
@@ -91,6 +101,8 @@ For sidebar/header changes, cover both modes, expanded/collapsed navigation, mac
 ## Builds and disk use
 
 Build macOS installers with `npm run desktop:build -- --bundles dmg`. Output is under `src-tauri/target/release/bundle/dmg/`. When delivering an installer, copy the completed Anubis DMG to `~/Downloads` and verify the copy. Do not overwrite supplied artwork while preparing platform icons.
+
+The default installer is local-only. When delivering Notes sync, use the local CloudKit signing/profile configuration described in README, embed the provisioning profile, and verify signed entitlements and the app inside the DMG. Do not substitute the ordinary build for a requested sync-enabled installer. Development builds require a profile containing the target device's Provisioning UDID; do not confuse it with the Mac's hardware UUID. Report signing verification separately from live sync validation.
 
 Rust build output can occupy several gigabytes. `cargo clean --manifest-path src-tauri/Cargo.toml` removes regenerable build artifacts, including bundled apps and installers in `target`; preserve any requested deliverables first. Avoid rebuilding desktop installers for documentation-only work.
 

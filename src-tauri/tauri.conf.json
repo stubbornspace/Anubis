@@ -31,7 +31,7 @@
     ],
     "security": {
       "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' ipc: http://ipc.localhost; object-src 'none'; base-uri 'self'; frame-src 'none'",
-      "devCsp": "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' ipc: http://ipc.localhost ws://127.0.0.1:1420; object-src 'none'; base-uri 'self'; frame-src 'none'"
+      "devCsp": "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' ipc: http://ipc.localhost ws:; object-src 'none'; base-uri 'self'; frame-src 'none'"
     }
   },
   "bundle": {
@@ -47,8 +47,15 @@
     "category": "Productivity",
     "shortDescription": "A quiet space for Markdown writing",
     "macOS": {
-      "minimumSystemVersion": "14.0"
+      "minimumSystemVersion": "14.0",
+      "infoPlist": "MacInfo.plist",
+      "files": {
+        "Resources/Assets.car": "target/app-icon/Assets.car",
+        "Resources/Anubis.icns": "target/app-icon/Anubis.icns"
+      }
     },
-    "iOS": { "minimumSystemVersion": "17.0" }
+    "iOS": {
+      "minimumSystemVersion": "17.0"
+    }
   }
 }

@@ -2,7 +2,7 @@
   "bundle": {
     "macOS": {
       "entitlements": "CloudKit.entitlements",
-      "infoPlist": "CloudKitInfo.plist"
+      "infoPlist": "MacCloudKitInfo.plist"
     },
     "iOS": {
       "infoPlist": "CloudKitInfo.plist"

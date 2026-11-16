@@ -9,13 +9,15 @@
 - [x] Inline nested/multiword tags, autocomplete, clickable filters, pin/rename/remove controls.
 - [x] Image import through paste/drop/file selection, immutable references, previews and Markdown ZIP export.
 - [x] Library backup/restore, including images, revisions, drafts and Trash; non-overwriting import.
+- [x] Nonblocking foreground sync: local autosave/navigation continue during network waits; concurrent edits and failed uploads retain recovery protection.
 - [x] CloudKit native transport for private notes/images, incremental fetch, exact-revision upload acknowledgement, conflict copies, and account binding.
 - [x] Optional CloudKit development entitlement/config templates and setup instructions.
 - [x] Native persistence/backup/conflict tests and desktop/touch UI regression coverage.
 
 ## Remaining before calling sync production-ready
 
-- [ ] Register and provision `iCloud.com.stubbornspace.kronos` under the user's Apple Developer team.
+- [x] Register and provision `iCloud.com.stubbornspace.kronos` under the user's Apple Developer team. Local macOS/iOS development profiles found; macOS signed app, embedded profile, target Mac provisioning eligibility, and DMG verified November 15, 2026. A refreshed development profile covering all five registered Macs was embedded and verified in a new Apple Silicon DMG; the Downloads copy checksum matched. The user subsequently confirmed that both Macs launch and sync successfully.
+- [x] Basic Mac ↔ Mac launch and CloudKit sync confirmed by the user with the five-Mac development build on November 15, 2026.
 - [ ] Validate actual Mac ↔ iPhone/iPad transfers, including offline/concurrent edits, large images, account changes and provider errors.
 - [ ] Validate native iOS image selection and export share-sheet behavior on a simulator/device.
 - [ ] Deploy CloudKit schema and prepare production signing after the development validation.

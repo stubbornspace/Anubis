@@ -103,6 +103,7 @@ export const test = base.extend({
           const data = read();
           switch (command) {
             case "sync_library":
+              if (w.__nativeTest.syncGate) await w.__nativeTest.syncGate;
               if (w.__nativeTest.syncFailure)
                 throw new Error("iCloud unavailable");
               return { pending: false, conflicts: 0 };

@@ -1487,10 +1487,6 @@ svg.lucide[width="32"] {
 .no-note-list .note-list-container {
   display: none;
 }
-.note-actions {
-  display: flex;
-  gap: 0.125rem;
-}
 .library-dialog-actions {
   display: flex;
   flex-wrap: wrap;
@@ -1544,8 +1540,7 @@ svg.lucide[width="32"] {
     min-height: 4rem;
     box-sizing: border-box;
   }
-  .notes-mode:not(.note-detail) .header-actions,
-  .notes-mode:not(.note-detail) .note-actions {
+  .notes-mode:not(.note-detail) .header-actions {
     display: none;
   }
   .notes-mode .note-list-container {
@@ -1637,10 +1632,6 @@ svg.lucide[width="32"] {
 .mac-window.notes-mode header {
   min-height: 64px;
 }
-.notes-mode .note-actions {
-  flex-wrap: wrap;
-  min-width: 0;
-}
 .notes-mode .header-actions {
   display: flex;
   width: auto;
@@ -1663,4 +1654,108 @@ svg.lucide[width="32"] {
   object-fit: cover;
   border-radius: 0.25rem;
   align-self: flex-end;
+}
+
+.note-menu > button {
+  width: 100%;
+  justify-content: flex-start;
+  padding: 0.5625rem 0.625rem;
+  font-size: 0.8125rem;
+}
+
+.selection-toolbar-anchor {
+  z-index: 20;
+}
+.selection-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.125rem;
+  max-width: calc(100vw - 1rem);
+  padding: 0.3125rem;
+  border: 0.0625rem solid var(--line);
+  border-radius: 0.5rem;
+  background: var(--overlay);
+  color: var(--text);
+  box-shadow: 0 0.375rem 1.5rem #0002;
+  z-index: 20;
+}
+.selection-toolbar button {
+  min-width: 2rem;
+  min-height: 2rem;
+  padding: 0.375rem;
+}
+.ios-window .selection-toolbar button {
+  min-width: var(--touch-target);
+  min-height: var(--touch-target);
+}
+@media print {
+  .selection-toolbar {
+    display: none !important;
+  }
+}
+
+.image-node {
+  max-width: 100%;
+  margin-block: 1rem;
+}
+.image-node .note-image {
+  max-width: 100%;
+  margin: 0;
+}
+.image-crop-viewport {
+  display: block;
+  position: relative;
+  overflow: hidden;
+  width: 100%;
+}
+.image-crop-viewport img {
+  position: absolute;
+  display: block;
+  max-width: none;
+  height: auto;
+  border-radius: 0;
+}
+.image-node.ProseMirror-selectednode {
+  outline: 0.125rem solid var(--accent);
+}
+.image-edit-dialog {
+  max-width: min(32rem, calc(100vw - 2rem));
+}
+.image-edit-preview {
+  max-height: 20rem;
+  margin-block: 1rem;
+}
+.image-edit-dialog label {
+  display: grid;
+  gap: 0.375rem;
+  margin-block: 0.75rem;
+}
+.image-edit-dialog input {
+  width: 100%;
+}
+.image-node [data-resize-handle] {
+  width: 0.875rem;
+  height: 0.875rem;
+  border: 0.125rem solid var(--paper);
+  border-radius: 0.25rem;
+  background: var(--accent);
+  opacity: 0;
+  pointer-events: none;
+  touch-action: none;
+}
+.image-node.ProseMirror-selectednode [data-resize-handle],
+.image-node:hover [data-resize-handle] {
+  opacity: 1;
+  pointer-events: auto;
+}
+.image-node [data-resize-handle="bottom-right"] {
+  cursor: nwse-resize;
+}
+.image-node [data-resize-handle="bottom-left"] {
+  cursor: nesw-resize;
+}
+.ios-window .image-node [data-resize-handle] {
+  width: var(--touch-target);
+  height: var(--touch-target);
 }

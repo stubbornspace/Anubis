@@ -54,7 +54,7 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "3EAC51111ABE8BCBCACE067B"
-               BuildableName = "Anubis.xctest"
+               BuildableName = "anubis_iOSUITests.xctest"
                BlueprintName = "anubis_iOSUITests"
                ReferencedContainer = "container:anubis.xcodeproj">
             </BuildableReference>

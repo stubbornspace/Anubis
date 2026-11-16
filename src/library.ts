@@ -55,6 +55,8 @@ export class LibraryController {
   private queue: Promise<unknown> = Promise.resolve();
   private timer?: ReturnType<typeof setTimeout>;
   private initialization?: Promise<boolean>;
+  private syncTask?: Promise<boolean>;
+  private changes = 0;
   subscribe = (fn: () => void) => {
     this.listeners.add(fn);
     return () => {
@@ -86,7 +88,8 @@ export class LibraryController {
     return task;
   };
   private changed() {
-    this.set({ sync: "pending" });
+    this.changes += 1;
+    if (this.state.sync !== "syncing") this.set({ sync: "pending" });
   }
   private activate(note: Note | null) {
     this.set({
@@ -298,33 +301,56 @@ export class LibraryController {
         await this.refresh();
       }
     });
-  sync = () =>
-    this.serial(async () => {
-      await this.flush();
-      this.set({ sync: "syncing", syncError: "" });
-      try {
-        const result = await invoke<{ pending: boolean; conflicts: number }>(
-          "sync_library",
-        );
-        await this.refresh();
-        if (this.state.note) {
-          const saved = await call<Note>({
-            op: "read",
-            id: this.state.note.id,
-          });
-          if (saved.markdown !== this.state.note.markdown) this.activate(saved);
+  sync = (): Promise<boolean> => {
+    // Only local preparation/reconciliation use the save queue. Network waits
+    // must never hold up editing, autosave, switching notes, or close/background.
+    return (this.syncTask ??= this.runSync().finally(() => {
+      this.syncTask = undefined;
+    }));
+  };
+  private runSync = async (): Promise<boolean> => {
+    if (!(await this.save())) return false;
+    const changes = this.changes;
+    this.set({ sync: "syncing", syncError: "" });
+    let result: { pending: boolean; conflicts: number } | undefined;
+    let failure = "";
+    try {
+      result = await invoke("sync_library");
+    } catch (e) {
+      failure = message(e);
+    }
+    // A failed upload may still have applied incoming changes. Reconcile in both
+    // cases, but never replace a draft or a note edited while the read awaited IPC.
+    const reconciled = await this.serial(async () => {
+      await this.refresh();
+      const note = this.state.note;
+      if (note && !this.state.dirty && !this.state.conflict) {
+        const saved = await call<Note>({ op: "read", id: note.id });
+        if (
+          this.state.note === note &&
+          !this.state.dirty &&
+          !this.state.conflict
+        ) {
+          if (saved.markdown !== note.markdown) this.activate(saved);
           else this.set({ note: saved });
         }
-        this.set({
-          sync: result.pending ? "pending" : "synced",
-          syncError: result.conflicts
-            ? `${result.conflicts} conflicting note(s) were preserved as separate conflict copies. Review them in All Notes.`
-            : "",
-        });
-      } catch (e) {
-        this.set({ sync: "error", syncError: message(e) });
       }
+    }, false);
+    if (!reconciled && !failure) failure = this.state.error;
+    this.set({
+      sync: failure
+        ? "error"
+        : result?.pending || this.changes !== changes || this.state.dirty
+          ? "pending"
+          : "synced",
+      syncError:
+        failure ||
+        (result?.conflicts
+          ? `${result.conflicts} conflicting note(s) were preserved as separate conflict copies. Review them in All Notes.`
+          : ""),
     });
+    return !failure;
+  };
   export = (noteId?: string) =>
     this.serial(async () => {
       await this.flush();

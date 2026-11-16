@@ -309,3 +309,39 @@ test("note library navigation and background saves work on touch devices", async
     await page.getByLabel("Close files", { exact: true }).tap();
   await expect(page.getByLabel("Markdown editor")).toContainText("Welcome");
 });
+
+test("selection formatting is available on touch layouts", async ({ page }) => {
+  await openMobileWorkspace(page);
+  const editor = page.getByLabel("Markdown editor");
+  await editor.fill("Touch formatting");
+  await editor.press("ControlOrMeta+a");
+  const menu = page.getByRole("toolbar", { name: "Text formatting" });
+  await expect(menu).toBeVisible();
+  await menu.getByRole("button", { name: "Bold", exact: true }).tap();
+  await expect(editor.locator("strong")).toHaveText("Touch formatting");
+  const box = await menu.boundingBox();
+  expect(box!.x).toBeGreaterThanOrEqual(0);
+  expect(box!.x + box!.width).toBeLessThanOrEqual(page.viewportSize()!.width);
+});
+
+test("image crop and size controls work on touch layouts", async ({ page }) => {
+  await openMobileWorkspace(page);
+  await page.locator('input[type="file"][accept^="image/"]').setInputFiles({
+    name: "pixel.png",
+    mimeType: "image/png",
+    buffer: Buffer.from(
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl6ZyQAAAAASUVORK5CYII=",
+      "base64",
+    ),
+  });
+  await page.locator(".note-image img").tap({ force: true });
+  await page
+    .getByRole("button", { name: "Crop and resize image", exact: true })
+    .tap();
+  const dialog = page.getByRole("dialog", { name: "Crop and resize image" });
+  await dialog.getByLabel("Display width (px)").fill("160");
+  await dialog.getByLabel("Crop top", { exact: true }).fill("10");
+  await dialog.getByRole("button", { name: "Apply", exact: true }).tap();
+  await expect(dialog).not.toBeVisible();
+  await expect(page.locator(".note-image")).toHaveCSS("width", "160px");
+});

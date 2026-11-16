@@ -16,7 +16,7 @@
     "ios:init": "tauri ios init",
     "ios:dev": "tauri ios dev",
     "ios:build": "tauri ios build",
-    "ios:simulator": "tauri ios build --debug --target aarch64-sim --no-sign",
+    "ios:simulator": "node scripts/ios-simulator.mjs",
     "test:webkit": "playwright test --project=webkit",
     "frontend:dev": "vite",
     "frontend:build": "tsc -b && vite build",

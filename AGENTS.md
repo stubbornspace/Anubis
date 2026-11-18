@@ -2,10 +2,11 @@
 
 ## Project
 
-Anubis is a desktop and iOS Markdown and plain-text editor built with React, TypeScript, Tiptap, Vite, and Tauri 2. Preserve both targets; do not add a standalone web product or Android scaffolding unless requested.
+Anubis is a desktop and iOS Markdown and plain-text editor built with React, TypeScript, Tiptap, Vite, and Tauri 2. iOS is Notes-only; Documents remain available on macOS. Preserve both targets; do not add a standalone web product or Android scaffolding unless requested.
 
 - `src/main.tsx`: editor, sidebar shell, settings dialog, and UI state.
-- `src/sidebar-tree.tsx`: shared recursive navigation rows, disclosure controls, and keyboard traversal for Documents and Notes.
+- `src/sidebar-tree.tsx`: shared Headless Tree adapter, controlled expansion, disclosure controls, and navigation for Documents and Notes.
+- `src/components/tree.tsx`: ReUI Basic Tree primitives adapted to existing Anubis styles. Keep ARIA tree roles, roving focus, theme tokens, and independent disclosure/actions; activation must still go through the workspace/library controllers.
 - `src/document-tree.tsx`: document tree adapter, expansion state, and file action menus. Keep filesystem/save operations in the workspace controller.
 - `src/workspace.ts`: workspace controller, autosave, filesystem IPC, and close coordination.
 - `src/library.ts`: Notes controller, local autosave, recovery, organization, and sync state.
@@ -40,7 +41,9 @@ Keep the writing interface minimal. Hide successful Saved/Synced header messages
 
 Use rem units for scalable interface dimensions and app-layout container queries for responsive breakpoints. Preserve physical macOS window-control spacing and the iOS minimum touch target when changing App zoom. Use theme tokens rather than adding isolated colors. Check both themes and appearances when changing styles. Settings live in a dialog. The sidebar is resizable and remembers its width; keep the native macOS controls aligned with the header.
 
-Documents and Notes use icon-only mode buttons on the left of the bottom sidebar control row, with Settings aligned to the right. Theme and appearance controls live in Settings; do not add a sidebar theme toggle. Keep hover labels, accessible names, and the selected mode’s accessible pressed state; do not highlight the selected mode button visually. Do not restore the document sidebar search or the Notes sidebar's “Saved on this device” label.
+On macOS, Documents and Notes use icon-only mode buttons on the left of the bottom sidebar control row, with Settings aligned to the right. Theme and appearance controls live in Settings; do not add a sidebar theme toggle. Keep hover labels, accessible names, and the selected mode’s accessible pressed state; do not highlight the selected mode button visually. Do not restore the document sidebar search or the Notes sidebar's “Saved on this device” label.
+
+On iOS, initialize Notes regardless of the legacy mode preference; hide both mode buttons and do not restore document workspaces. Preserve existing files, bookmarks, and document recovery drafts without automatically importing them. Keep the shared native background-save bridge, Notes import/export, and Settings access.
 
 The top-right toolbar uses direct icon buttons. From left to right: Focus, Source, divider, Insert image, Tags, History, Export, Delete for Notes; Focus, Source, divider, Insert image, Delete for Documents. Preserve hover labels, keyboard access, deletion confirmation, and focus restoration after deletion and the History dialog.
 
@@ -93,7 +96,7 @@ Choose checks appropriate to the change:
 - Native filesystem and library persistence behavior: `npm run test:native`.
 - Rust compilation: `npm run desktop:check`.
 - iPhone/iPad UI: `npx playwright test --project=iphone --project=ipad`. These use mocked IPC and cannot prove Files access or iOS lifecycle behavior.
-- iOS development: `npm run ios:dev -- --open`, select `anubis_iOS` and a simulator in Xcode. Its Test action exercises native folder access, editing, relaunch, and Trash.
+- iOS development: `npm run ios:dev -- --open`, select `anubis_iOS` and a simulator in Xcode. Its Test action exercises native Notes startup, editing, backgrounding, and relaunch.
 - iOS simulator build: `npm run ios:simulator` automates the Tauri helper, project regeneration, and generic Xcode build-for-testing through `scripts/ios-simulator.mjs`. It needs full Xcode but not a matching installed runtime to compile. Native test execution still requires a simulator/device. Keep its helper cleanup and distinct UI-test bundle identifier intact.
 - Formatting: Prettier for frontend files, `cargo fmt --manifest-path src-tauri/Cargo.toml --check` for Rust, and `git diff --check` for whitespace.
 

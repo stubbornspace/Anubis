@@ -1,5 +1,11 @@
 import { createPortal } from "react-dom";
-import { useId, useLayoutEffect, useRef, useState } from "react";
+import {
+  type CSSProperties,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import { Tags, X } from "lucide-react";
 import { changeNoteTag } from "./tags";
 import type { Note } from "./library";
@@ -22,7 +28,7 @@ export function NoteTagPicker({
   const [open, setOpen] = useState(false);
   const [value, setValue] = useState("");
   const [error, setError] = useState("");
-  const [position, setPosition] = useState({ top: 0, left: 0 });
+  const [position, setPosition] = useState<CSSProperties>({ top: 0, left: 0 });
   const matches = [...new Set(suggestions)]
     .filter(
       (tag) =>
@@ -42,19 +48,37 @@ export function NoteTagPicker({
     const place = () => {
       if (!popup.current?.matches(":popover-open") || !trigger.current) return;
       const rect = trigger.current.getBoundingClientRect();
+      const viewport = window.visualViewport;
+      const left = viewport?.offsetLeft ?? 0;
+      const top = viewport?.offsetTop ?? 0;
+      const gap =
+        parseFloat(getComputedStyle(document.documentElement).fontSize) / 2;
+      const maxWidth = Math.max(0, (viewport?.width ?? innerWidth) - gap * 2);
+      const maxHeight = Math.max(
+        0,
+        (viewport?.height ?? innerHeight) - gap * 2,
+      );
       setPosition({
+        maxWidth,
+        maxHeight,
         left: Math.max(
-          8,
+          left + gap,
           Math.min(
             rect.right - popup.current.offsetWidth,
-            innerWidth - popup.current.offsetWidth - 8,
+            left +
+              gap +
+              maxWidth -
+              Math.min(popup.current.offsetWidth, maxWidth),
           ),
         ),
         top: Math.max(
-          8,
+          top + gap,
           Math.min(
-            rect.bottom + 8,
-            innerHeight - popup.current.offsetHeight - 8,
+            rect.bottom + gap,
+            top +
+              gap +
+              maxHeight -
+              Math.min(popup.current.offsetHeight, maxHeight),
           ),
         ),
       });
@@ -63,9 +87,13 @@ export function NoteTagPicker({
     const observer = new ResizeObserver(place);
     if (popup.current) observer.observe(popup.current);
     window.addEventListener("resize", place);
+    window.visualViewport?.addEventListener("resize", place);
+    window.visualViewport?.addEventListener("scroll", place);
     return () => {
       observer.disconnect();
       window.removeEventListener("resize", place);
+      window.visualViewport?.removeEventListener("resize", place);
+      window.visualViewport?.removeEventListener("scroll", place);
     };
   }, [open]);
   const change = (tag: string, remove = false) => {

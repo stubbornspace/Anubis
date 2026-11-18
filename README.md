@@ -1,6 +1,6 @@
 # Anubis
 
-Anubis is a Markdown and text editor for desktop and iOS, built with React, Tiptap, and Tauri 2. Documents are real files in a folder you choose. Notes use a separate app-managed library. There is no standalone web app or browser document store.
+Anubis is a Markdown and text editor for desktop and iOS, built with React, Tiptap, and Tauri 2. On macOS, Documents are real files in a folder you choose and Notes use a separate app-managed library. iPhone and iPad offer Notes only. There is no standalone web app or browser document store.
 
 ## Run and build
 
@@ -29,7 +29,7 @@ The local desktop build is not Developer ID signed or notarized. Windows and Lin
 
 ## iPhone and iPad
 
-The iOS target supports iOS/iPadOS 17 and later. It shares the editor, themes, file tree, source mode, autosave, and conflict recovery with desktop. The compact layout uses a Files drawer, touch controls, safe-area insets, and an editor viewport that responds to the software keyboard.
+The iOS target supports iOS/iPadOS 17 and later. It opens directly into Notes, sharing the editor, themes, tag tree, source mode, autosave, and note recovery with desktop. There are no Documents/Notes mode buttons or document folder picker on iOS. The compact layout uses a Notes drawer, touch controls, safe-area insets, and an editor viewport that responds to the software keyboard.
 
 Install full Xcode, an iOS Simulator runtime, CocoaPods, and XcodeGen, plus the Rust targets:
 
@@ -56,19 +56,19 @@ Physical-device development uses `TAURI_DEV_HOST` for Vite and its HMR WebSocket
 
 Physical-device installation and distribution require an Apple development team and provisioning. Set `APPLE_DEVELOPMENT_TEAM` locally, or select your team in Xcode. Do not commit signing identities or provisioning profiles. The existing bundle identifier `com.stubbornspace.kronos` is retained. The generated Xcode project is included; `npm run ios:init` can regenerate it, and `xcodegen generate --spec src-tauri/gen/apple/project.yml` updates it after changing the project definition.
 
-Choose a folder through the native Files picker. A local `Notes` folder is available inside Anubis's Documents directory, visible in Files under **On My iPhone/iPad → Anubis**. The native bridge retains security-scoped access and saves a bookmark to reopen the chosen folder after relaunch. Canceling or failing to open a new folder retains the previous workspace. Choose either a local folder or a folder in iCloud Drive. Anubis coordinates access with Apple’s document system; iCloud Drive transfers the files between devices. Documents remain ordinary UTF-8 files.
+Notes are stored in the private app library and remain usable offline. Import Markdown/text or backups through **Settings → Note library** and export notes through the editor toolbar. Switching away requests an immediate save and a short native background task to let it finish. Failed note saves retain recovery drafts; reopening restores them and offers **Save recovery copy**.
 
-On iOS, Document deletion uses the system Trash API; recover supported files in Files → Recently Deleted. If the folder provider cannot trash a file, Anubis reports the error and keeps the file. Switching away from the app requests an immediate save and a short native background task to let it finish.
+Existing document files, folder bookmarks, and document recovery drafts from older iOS versions are left untouched. They are not opened or migrated into Notes automatically. Existing files in **On My iPhone/iPad → Anubis** remain accessible through Files; import files explicitly to create independent Notes copies. Legacy private document drafts remain preserved but are not exposed by the Notes-only interface.
 
-Before each macOS or iOS save, Anubis writes a private recovery draft in native app storage. Successful saves clear it. If a save fails and the app terminates, opening a workspace on the next launch restores that draft and offers **Save a copy** or a confirmed discard/reload. Recovered copies are created at the root of the chosen workspace, including when the original folder is unavailable. Recovery is not a backup.
+The native UI test covers Notes startup, editing, backgrounding, and relaunch, plus App zoom. Native CloudKit sync still requires separate signed-device validation.
 
-## Optional iCloud Drive folders
+## Optional iCloud Drive folders (macOS)
 
-Choose a folder in iCloud Drive using **Choose folder** on each device. Select the same folder on your Mac and iPhone/iPad to work on the same documents. Local folders remain available through the same picker; nothing is moved into iCloud automatically. Folder choices and appearance preferences remain specific to each device. The default **On My iPhone/iPad → Anubis → Notes** folder is local and does not sync.
+On macOS, choose a folder in iCloud Drive using **Choose folder**. Local folders remain available through the same picker; nothing is moved into iCloud automatically. iOS uses the separate Notes library and optional CloudKit sync described below.
 
 Apple’s background service transfers the files. **Saved locally · Upload pending** means the save reached this device; **Uploaded to iCloud** means Apple reports that file uploaded, not that every other device has downloaded it. Download and upload errors remain visible. Cloud-only documents download when opened; access requests are cancellable after 30 seconds if the provider does not grant access. If a download fails, the previous document remains available. Opening a file never rewrites its contents.
 
-Both Apple targets use native coordinated file access and a file presenter for external changes, alongside the existing content-version checks and private recovery drafts. Downloaded documents can be edited offline and uploaded later. Keep independent backups; iCloud is a synchronization service.
+macOS Documents use native coordinated file access and a file presenter for external changes, alongside the existing content-version checks and private recovery drafts. Downloaded documents can be edited offline and uploaded later. Keep independent backups; iCloud is a synchronization service.
 
 If iCloud reports competing versions, saving, renaming, and deleting the affected original are blocked. **Keep both versions** saves any unsaved editor text as a separate document, then copies each competing iCloud version to a uniquely named sibling file before resolving that version. Copies never overwrite existing files. A partial failure leaves uncopied versions intact. Review the resulting documents before deleting unwanted copies. This is document version recovery, not collaborative editing or automatic text merging.
 
@@ -90,19 +90,19 @@ xcrun clang -fobjc-arc -fblocks -framework Foundation \
 
 The ordinary test suite does not touch iCloud. The native macOS folder and cloud-only download tests have passed against iCloud Drive, and the iOS workspace smoke test covers native local files. Physical Mac–iPhone/iPad transfer and native offline version conflicts still need validation on devices signed in to the same iCloud account; browser conflict tests use mocked provider responses.
 
-## Folder workspaces
+## Folder workspaces (macOS)
 
 - Choose a folder on first launch. Anubis remembers it in its native app-data directory and reopens it next time.
 - The sidebar lists `.md`, `.markdown`, `.mdown`, and `.txt` files recursively, with expandable subfolders. Empty folders are shown too.
 - Markdown opens in the formatted editor with an optional source view. Plain text always opens as literal text. Opening or browsing a file does not rewrite it.
-- Documents and Notes share the same tree rows and keyboard navigation: Up/Down moves between visible rows, Right expands or enters a branch, Left collapses or returns to its parent, and Home/End jumps to the first/last visible row. Enter activates the focused row.
+- Documents and Notes share a ReUI Basic Tree adaptation backed by Headless Tree, styled with Anubis theme tokens. Rows expose ARIA tree/treeitem semantics and one active row in the keyboard tab order. Keyboard navigation: Up/Down moves between visible rows, Right expands or enters a branch, Left collapses or returns to its parent, and Home/End jumps to the first/last visible row. Enter activates the focused row.
 - Click a folder name to select the destination for new files and folders; use its arrow to expand or collapse it independently. Click the selected folder name again to return the creation destination to the workspace root. The file-plus and folder-plus buttons create a document or subfolder there.
 - Each file's **⋯** menu offers Rename and Delete. Deletion requires confirmation and moves the file to the OS Trash/Recycle Bin; it does not recursively delete folders. Existing files are never replaced by create or rename operations.
 - Click the workspace name at the top of the sidebar to choose another local folder. Native filesystem notifications and window focus automatically refresh the listing and clean open documents.
 
 ## Note library
 
-Use **Documents** and **Notes** at the bottom of the sidebar to switch modes. Documents retain their folder workflow. Notes have one resizable sidebar containing a tag/note tree and use the same Markdown editor. Narrow layouts collapse the sidebar like Documents. Each mode retains its own sidebar width and active item.
+On macOS, use **Documents** and **Notes** at the bottom of the sidebar to switch modes. iOS opens directly into Notes, with Settings as the only bottom sidebar control. Documents retain their folder workflow. Notes have one resizable sidebar containing a tag/note tree and use the same Markdown editor. Narrow layouts collapse the sidebar like Documents. Each mode retains its own sidebar width and active item.
 
 Notes save into `library/notes.sqlite3` inside Tauri's app-data directory. Content never goes into webview storage. Local saving works without an account or network. Notes use one resizable sidebar: Search and Add Note at the top, then tags and untagged notes directly, with no All Notes wrapper. Tags act like folders, nested tags like subfolders, and notes appear as compact file rows. Untagged notes sit at the sidebar root. Notes with multiple tags appear in each corresponding folder; search finds them once across the entire library, even in collapsed folders. Tags and notes are sorted alphabetically. Expansion state is remembered; arrow keys navigate/expand/collapse the tree. Pinned, Archive, Today, To-do, and Trash views have been removed. Older archived/trashed notes appear in the Notes sidebar so you can explicitly keep or delete them. History retains earlier saves; restoring a version preserves the current content as another revision. Draft journals survive failed saves. Mode changes and quit are blocked when unsaved edits need recovery.
 
@@ -161,7 +161,7 @@ cargo fmt --manifest-path src-tauri/Cargo.toml --check
 npm run build
 ```
 
-Rust tests perform real filesystem operations in temporary folders, including recursive discovery, symlink/traversal rejection, conflict detection, and collision-safe writes/renames. UI tests use Chromium and WebKit with a mocked Tauri IPC boundary to exercise navigation, autosave, folder trees, native-close coordination, recovery, and layout. The iPhone and iPad WebKit projects also exercise touch navigation, software-keyboard viewport changes, and background save/recovery through the mock boundary. These engine tests are a native-app test harness, not a supported browser application. The Xcode Test action provides a separate real iOS workspace smoke test.
+Rust tests perform real filesystem operations in temporary folders, including recursive discovery, symlink/traversal rejection, conflict detection, and collision-safe writes/renames. UI tests use Chromium and WebKit with a mocked Tauri IPC boundary to exercise navigation, autosave, folder trees, native-close coordination, recovery, and layout. The iPhone and iPad WebKit projects also exercise touch navigation, software-keyboard viewport changes, and background save/recovery through the mock boundary. These engine tests are a native-app test harness, not a supported browser application. The Xcode Test action provides a separate native iOS Notes smoke test.
 
 ## Scope and background
 

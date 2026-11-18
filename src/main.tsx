@@ -62,7 +62,9 @@ function App() {
   );
   const noteState = useSyncExternalStore(library.subscribe, library.snapshot);
   const [mode, setMode] = useState<"documents" | "notes">(() =>
-    localStorage.getItem("kronos.mode") === "notes" ? "notes" : "documents",
+    isIOS || localStorage.getItem("kronos.mode") === "notes"
+      ? "notes"
+      : "documents",
   );
   const notesMode = mode === "notes";
   const [libraryView, setLibraryView] = useState<LibraryView>(() => {
@@ -100,7 +102,7 @@ function App() {
       }
     : { ...documentState, busy: documentState.busy || switchingMode };
   const switchMode = async (next: "documents" | "notes") => {
-    if (next === mode || switchingRef.current) return;
+    if (isIOS || next === mode || switchingRef.current) return;
     switchingRef.current = true;
     setSwitchingMode(true);
     try {
@@ -341,20 +343,40 @@ function App() {
       if (compactNavigation()) setSidebar(false);
     }
   }, []);
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
+  const keyboardTarget = useRef<HTMLElement | null>(null);
   useEffect(() => {
     if (!isIOS) return;
+    document.documentElement.dataset.platform = "ios";
     const viewport = window.visualViewport;
     const resize = () => {
+      const active = document.activeElement;
+      if (
+        active instanceof HTMLElement &&
+        (active.isContentEditable || active.matches("input, textarea"))
+      )
+        keyboardTarget.current = active;
+      setKeyboardVisible(
+        window.innerHeight - (viewport?.height ?? window.innerHeight) > 100,
+      );
       document.documentElement.style.setProperty(
         "--app-height",
         `${viewport?.height ?? window.innerHeight}px`,
       );
+      document.documentElement.style.setProperty(
+        "--visual-top",
+        `${viewport?.offsetTop ?? 0}px`,
+      );
     };
     resize();
     viewport?.addEventListener("resize", resize);
+    viewport?.addEventListener("scroll", resize);
     window.addEventListener("resize", resize);
     return () => {
       viewport?.removeEventListener("resize", resize);
+      viewport?.removeEventListener("scroll", resize);
+      delete document.documentElement.dataset.platform;
+      document.documentElement.style.removeProperty("--visual-top");
       window.removeEventListener("resize", resize);
       document.documentElement.style.removeProperty("--app-height");
     };
@@ -363,8 +385,8 @@ function App() {
   const updateRef = useRef(update);
   updateRef.current = update;
   useEffect(() => {
-    void workspace.initialize();
-    if (localStorage.getItem("kronos.mode") === "notes")
+    if (!isIOS) void workspace.initialize();
+    if (isIOS || localStorage.getItem("kronos.mode") === "notes")
       void library.initialize();
     const connected = workspace.connect();
     return () => {
@@ -682,8 +704,8 @@ function App() {
           {isIOS && (
             <button
               className="mobile-sidebar-close"
-              aria-label="Close files"
-              title="Close files"
+              aria-label="Close notes"
+              title="Close notes"
               onClick={() => setSidebar(false)}
             >
               <X size={20} />
@@ -770,26 +792,28 @@ function App() {
           </>
         )}
         <div className="sidebar-controls">
-          <div className="mode-switch" role="group" aria-label="Writing mode">
-            <button
-              title="Documents"
-              aria-label="Documents"
-              aria-pressed={!notesMode}
-              disabled={state.busy}
-              onClick={() => void switchMode("documents")}
-            >
-              <FolderOpen size={17} />
-            </button>
-            <button
-              title="Notes"
-              aria-label="Notes"
-              aria-pressed={notesMode}
-              disabled={state.busy}
-              onClick={() => void switchMode("notes")}
-            >
-              <NotebookPen size={17} />
-            </button>
-          </div>
+          {!isIOS && (
+            <div className="mode-switch" role="group" aria-label="Writing mode">
+              <button
+                title="Documents"
+                aria-label="Documents"
+                aria-pressed={!notesMode}
+                disabled={state.busy}
+                onClick={() => void switchMode("documents")}
+              >
+                <FolderOpen size={17} />
+              </button>
+              <button
+                title="Notes"
+                aria-label="Notes"
+                aria-pressed={notesMode}
+                disabled={state.busy}
+                onClick={() => void switchMode("notes")}
+              >
+                <NotebookPen size={17} />
+              </button>
+            </div>
+          )}
           <button
             ref={settingsButton}
             aria-label="Settings"
@@ -937,13 +961,15 @@ function App() {
               aria-label="Editor controls"
               inert={state.busy || !state.doc}
             >
-              {isIOS && (
+              {isIOS && keyboardVisible && (
                 <button
                   aria-label="Hide keyboard"
                   title="Hide keyboard"
-                  onClick={() =>
-                    (document.activeElement as HTMLElement | null)?.blur()
-                  }
+                  onPointerDown={(event) => {
+                    event.preventDefault();
+                    keyboardTarget.current?.blur();
+                  }}
+                  onClick={() => keyboardTarget.current?.blur()}
                 >
                   <ChevronDown size={20} />
                 </button>

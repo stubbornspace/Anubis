@@ -14,12 +14,12 @@ export default defineConfig({
     },
     {
       name: "iphone",
-      testMatch: ["mobile.spec.ts", "cloud.spec.ts"],
+      testMatch: "mobile.spec.ts",
       use: { ...devices["iPhone 13"], browserName: "webkit" },
     },
     {
       name: "ipad",
-      testMatch: ["mobile.spec.ts", "cloud.spec.ts"],
+      testMatch: "mobile.spec.ts",
       use: {
         ...devices["iPad Pro 11"],
         viewport: { width: 1024, height: 1366 },

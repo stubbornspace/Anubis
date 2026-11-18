@@ -84,7 +84,7 @@ test("file menus dismiss and focus preserves window sizing", async ({
 }) => {
   await openWorkspace(page);
   const row = page.locator(".file-row").filter({
-    has: page.getByRole("button", { name: "Welcome.md", exact: true }),
+    has: page.getByRole("treeitem", { name: "Welcome.md", exact: true }),
   });
   await row.hover();
   const trigger = row.getByRole("button", { name: "Options for Welcome.md" });
@@ -144,10 +144,12 @@ test("folder disclosure keeps the creation destination, and root selection creat
   page,
 }) => {
   await openWorkspace(page);
-  await page.getByRole("button", { name: "Folder Notes", exact: true }).click();
+  await page
+    .getByRole("treeitem", { name: "Folder Notes", exact: true })
+    .click();
   await expect(
-    page.getByRole("button", { name: "Folder Notes", exact: true }),
-  ).toHaveAttribute("aria-pressed", "true");
+    page.getByRole("treeitem", { name: "Folder Notes", exact: true }),
+  ).toHaveAttribute("aria-selected", "true");
   await page
     .getByRole("button", { name: "Collapse Notes", exact: true })
     .click();
@@ -155,18 +157,20 @@ test("folder disclosure keeps the creation destination, and root selection creat
     page.getByRole("button", { name: "Expand Notes", exact: true }),
   ).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Folder Notes", exact: true }),
-  ).toHaveAttribute("aria-pressed", "true");
+    page.getByRole("treeitem", { name: "Folder Notes", exact: true }),
+  ).toHaveAttribute("aria-selected", "true");
   await page.getByRole("button", { name: "Expand Notes", exact: true }).click();
-  await page.getByRole("button", { name: "Folder Notes", exact: true }).click();
+  await page
+    .getByRole("treeitem", { name: "Folder Notes", exact: true })
+    .click();
   await expect(
-    page.getByRole("button", { name: "Folder Notes", exact: true }),
-  ).toHaveAttribute("aria-pressed", "false");
+    page.getByRole("treeitem", { name: "Folder Notes", exact: true }),
+  ).toHaveAttribute("aria-selected", "false");
   await page.getByLabel("New document", { exact: true }).click();
   await page.getByLabel("File name").fill("At root.md");
   await page.getByRole("button", { name: "Create", exact: true }).click();
   await expect(
-    page.getByRole("button", { name: "At root.md", exact: true }),
+    page.getByRole("treeitem", { name: "At root.md", exact: true }),
   ).toBeVisible();
   expect(
     await page.evaluate(() =>
@@ -179,8 +183,11 @@ test("shared tree keyboard navigation opens documents through the save controlle
   page,
 }) => {
   await openWorkspace(page);
-  const notes = page.getByRole("button", { name: "Folder Notes", exact: true });
-  const nested = page.getByRole("button", {
+  const notes = page.getByRole("treeitem", {
+    name: "Folder Notes",
+    exact: true,
+  });
+  const nested = page.getByRole("treeitem", {
     name: "Folder Nested",
     exact: true,
   });
@@ -197,7 +204,10 @@ test("shared tree keyboard navigation opens documents through the save controlle
     (await nested.evaluate((el) => el === document.activeElement))
   )
     await page.keyboard.press("ArrowRight");
-  const thought = page.getByRole("button", { name: "Thought.md", exact: true });
+  const thought = page.getByRole("treeitem", {
+    name: "Thought.md",
+    exact: true,
+  });
   await expect(thought).toBeFocused();
   await page.keyboard.press("ArrowLeft");
   await expect(nested).toBeFocused();
@@ -205,7 +215,10 @@ test("shared tree keyboard navigation opens documents through the save controlle
   await expect(nested).toHaveAttribute("aria-expanded", "false");
   await page.keyboard.press("ArrowLeft");
   await expect(notes).toBeFocused();
-  const empty = page.getByRole("button", { name: "Folder Empty", exact: true });
+  const empty = page.getByRole("treeitem", {
+    name: "Folder Empty",
+    exact: true,
+  });
   await empty.focus();
   await page.keyboard.press("ArrowRight");
   await expect(page.getByText("Empty folder", { exact: true })).toBeVisible();
@@ -213,14 +226,14 @@ test("shared tree keyboard navigation opens documents through the save controlle
   await expect(empty).toBeFocused();
   await page.keyboard.press("End");
   await expect(
-    page.getByRole("button", { name: "Second.md", exact: true }),
+    page.getByRole("treeitem", { name: "Second.md", exact: true }),
   ).toBeFocused();
   await page.keyboard.press("Home");
   await expect(notes).toBeFocused();
   await page
     .getByLabel("Markdown editor")
     .fill("Pending text before tree navigation");
-  const second = page.getByRole("button", { name: "Second.md", exact: true });
+  const second = page.getByRole("treeitem", { name: "Second.md", exact: true });
   await second.focus();
   await page.keyboard.press("Enter");
   await expect(page.getByLabel("Markdown editor")).toContainText("Second");

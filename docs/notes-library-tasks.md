@@ -67,3 +67,45 @@ Tree-layout validation: 68 Notes/mobile UI tests passed across Chromium/WebKit/i
 
 - [x] Remove the All Notes wrapper; show tags/subtags and root-level untagged notes directly. Ignore the obsolete root-collapse preference without deleting it.
 - [x] Keep tag expansion, deduplicated search, keyboard traversal, and tag-scoped creation. Clicking the selected tag clears the creation destination; missing tags no longer affect new notes.
+
+## Notes-only iOS
+
+- [x] Open Notes regardless of the legacy mode preference; remove iOS mode buttons and document-folder restoration. Keep desktop Documents and Notes.
+- [x] Preserve existing document files, bookmarks, and recovery drafts without automatic migration. Keep Notes import/export and the background-save bridge.
+- [x] Update mobile regression coverage and the native Notes smoke test.
+- [ ] Run the updated native smoke test on a simulator/device and verify import/export through the native Files picker/share sheet.
+- [ ] Verify CloudKit Notes sync on a signed physical iPhone/iPad; mocked mobile tests do not establish live sync.
+
+Validation: 18 iPhone/iPad mocked UI tests and 68 desktop Chromium/WebKit Notes and document-cloud tests passed. Frontend compilation, formatting, and iOS simulator app/native UI-test compilation passed. The updated native test has not been executed on a device or simulator.
+
+## iPad layout review fixes
+
+- [x] Position and constrain Tags against the visual viewport, including keyboard resize and panning.
+- [x] Apply iOS touch targets and keyboard/safe-area dialog bounds to body portals, including History and Crop & resize.
+- [x] Keep New Note at least 44px tall at minimum App zoom.
+
+Validation: frontend build, formatting, 22 mocked iPhone/iPad tests, and 16 focused Chromium/WebKit tests passed. New geometry tests cover minimum-zoom touch targets, History bounds and focus restoration, and Tags during keyboard resize/panning. Native keyboard and VoiceOver validation remain pending; Device discovery could not locate simctl during the review.
+
+The Notes-only iOS build with the iPad layout fixes was installed over Anubis on RazorCrest on November 16, 2026. The app signature, CloudKit Development entitlements, bundle identity, and embedded provisioning profile covering the iPad were verified. Native launch, keyboard/VoiceOver behavior, and live sync were not exercised during this deployment.
+
+The follow-up iPad screenshot exposed unnecessary header wrapping that the earlier bounds-only tests missed. The iOS header now sizes to the editor column, truncates the title before wrapping actions, and reserves no horizontal width for quiet save status. Keyboard dismissal appears only when the visual viewport indicates a keyboard and blurs the editing target on touch. Added same-row geometry assertions at 1000px and 1194px with navigation expanded/collapsed. All 24 mobile tests and three focused desktop header tests passed; the signed device build passed. Native screenshot confirmation remains pending.
+
+## ReUI / Headless Tree sidebar
+
+- [x] Adapt ReUI Basic Tree's Tree/TreeItem/TreeItemLabel composition to Anubis theme tokens in `src/components/tree.tsx`, using `@headless-tree/core` and `@headless-tree/react` for tree state, focus, and ARIA metadata. No Tailwind or app-wide shadcn restyling.
+- [x] Retain separate disclosure controls, tag creation selection, note dash markers, file action menus, expansion controllers, multi-tag membership, deduplicated search, and save-before-navigation.
+- [x] Update UI selectors for treeitem roles and aria-selected, and test hierarchy levels and a single row in the keyboard tab order. Preserve empty-folder Right Arrow behavior.
+- [x] Install the signed tree migration on RazorCrest (November 16, 2026); signature, CloudKit Development entitlements, app identity, and embedded profile verified.
+- [x] Install the same signed tree migration on Andor (November 16, 2026); signature, CloudKit Development entitlements, bundle identity, and provisioning coverage verified. Native interactions and live sync were not exercised.
+- [ ] Verify the new tree interactions and VoiceOver on RazorCrest; installation does not establish native interaction or live sync behavior.
+
+Validation: frontend compilation and formatting passed. 140 UI tests passed across Chromium, WebKit, iPhone, and iPad. The zoom assertion was corrected to the existing 14px sidebar font token (21px at 150%); this migration does not change sidebar typography.
+
+## Horus native shell prototype
+
+- [x] Build the existing `Horis/` SwiftUI starter into a separate iOS shell with in-memory mock notes/tags, native split navigation, search, editing placeholders, and Tags/Settings sheets.
+- [x] Compile for the generic iOS simulator and validate mock hierarchy, search deduplication, selection/deletion, and navigation edit retention.
+- [ ] Review iPad/iPhone layouts, appearances, accessibility sizes, keyboard, and VoiceOver interactively. Device-panel discovery could not find `simctl`.
+- [ ] Refine the shell design before adding the WKWebView/Tiptap editor and existing Notes backend. Production Anubis data and persistence remain separate.
+
+See `Horis/README.md` for the prototype's scope and build commands. Its starter iOS 27.2 deployment target is unchanged; mock edits reset on relaunch.

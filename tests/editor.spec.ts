@@ -4,8 +4,10 @@ test("opens a native workspace, expands subfolders and edits plain text", async 
   page,
 }) => {
   await openWorkspace(page);
-  await page.getByRole("button", { name: "Folder Notes", exact: true }).click();
-  await page.getByRole("button", { name: "plain.txt", exact: true }).click();
+  await page
+    .getByRole("treeitem", { name: "Folder Notes", exact: true })
+    .click();
+  await page.getByRole("treeitem", { name: "plain.txt", exact: true }).click();
   await expect(page.getByLabel("Text editor")).toHaveValue(
     "literal **text**\n",
   );
@@ -17,7 +19,7 @@ test("opens a native workspace, expands subfolders and edits plain text", async 
     ),
   ).toBe("Keep **literal** characters");
   await expect(page.getByLabel("Search files")).toHaveCount(0);
-  await page.getByRole("button", { name: "Thought.md", exact: true }).click();
+  await page.getByRole("treeitem", { name: "Thought.md", exact: true }).click();
   await expect(page.locator(".writing h1")).toHaveText("Thought");
 });
 
@@ -28,7 +30,7 @@ test("flushes pending edits before switching files and restores the workspace", 
   await page
     .getByLabel("Markdown editor")
     .fill("Saved immediately on navigation");
-  await page.getByRole("button", { name: "Second.md", exact: true }).click();
+  await page.getByRole("treeitem", { name: "Second.md", exact: true }).click();
   expect(
     await page.evaluate(
       () => (window as any).__nativeTest.read().files["Welcome.md"],
@@ -36,7 +38,7 @@ test("flushes pending edits before switching files and restores the workspace", 
   ).toContain("Saved immediately on navigation");
   await page.reload();
   await expect(page.locator(".writing h1")).toHaveText("Second");
-  await page.getByRole("button", { name: "Welcome.md", exact: true }).click();
+  await page.getByRole("treeitem", { name: "Welcome.md", exact: true }).click();
   await expect(page.getByLabel("Markdown editor")).toContainText(
     "Saved immediately on navigation",
   );
@@ -49,7 +51,7 @@ test("undo and redo stay within the active document", async ({ page }) => {
   await page.keyboard.press("ControlOrMeta+z");
   await expect(page.locator(".writing h1")).toHaveText("Welcome");
   await editor.fill("First file draft");
-  await page.getByRole("button", { name: "Second.md", exact: true }).click();
+  await page.getByRole("treeitem", { name: "Second.md", exact: true }).click();
   const firstSaved = await page.evaluate(
     () => (window as any).__nativeTest.read().files["Welcome.md"],
   );
@@ -67,7 +69,7 @@ test("undo and redo stay within the active document", async ({ page }) => {
   await page.keyboard.press("ControlOrMeta+Shift+z");
   await expect(page.locator(".writing h1")).toHaveText("Second edited");
 
-  await page.getByRole("button", { name: "Welcome.md", exact: true }).click();
+  await page.getByRole("treeitem", { name: "Welcome.md", exact: true }).click();
   await editor.click();
   await page.keyboard.press("ControlOrMeta+z");
   await expect(editor).toHaveText("First file draft");
@@ -103,7 +105,9 @@ test("creates folders and documents in the selected subfolder, renames, and tras
   page,
 }) => {
   await openWorkspace(page);
-  await page.getByRole("button", { name: "Folder Notes", exact: true }).click();
+  await page
+    .getByRole("treeitem", { name: "Folder Notes", exact: true })
+    .click();
   await page.getByLabel("New folder", { exact: true }).click();
   await page.getByLabel("Folder name").fill("Ideas");
   await page.getByRole("button", { name: "Create", exact: true }).click();
@@ -118,16 +122,16 @@ test("creates folders and documents in the selected subfolder, renames, and tras
     ),
   ).toContain("New nested idea");
   const row = page.locator(".file-row").filter({
-    has: page.getByRole("button", { name: "Idea.md", exact: true }),
+    has: page.getByRole("treeitem", { name: "Idea.md", exact: true }),
   });
   await row.hover();
   await page.getByLabel("Options for Idea.md").click();
   await page.getByLabel("Rename Idea.md").click();
   await page.getByLabel("File name").fill("Renamed.md");
   await page.getByRole("button", { name: "Save name" }).click();
-  await page.getByRole("button", { name: "Welcome.md", exact: true }).click();
+  await page.getByRole("treeitem", { name: "Welcome.md", exact: true }).click();
   const renamed = page.locator(".file-row").filter({
-    has: page.getByRole("button", { name: "Renamed.md", exact: true }),
+    has: page.getByRole("treeitem", { name: "Renamed.md", exact: true }),
   });
   await renamed.hover();
   await page.getByLabel("Options for Renamed.md").click();
@@ -145,7 +149,7 @@ test("keeps edits on a conflicting save, blocks switching and allows a recovery 
     (window as any).__nativeTest.change("Welcome.md", "External edit"),
   );
   await expect(page.getByRole("alert")).toContainText("changed outside Anubis");
-  await page.getByRole("button", { name: "Second.md", exact: true }).click();
+  await page.getByRole("treeitem", { name: "Second.md", exact: true }).click();
   await expect(page.getByLabel("Markdown editor")).toHaveText(
     "My unsaved draft",
   );
@@ -238,8 +242,8 @@ test("browsing existing files never writes them, and source edits stay exact", a
   page,
 }) => {
   await openWorkspace(page);
-  await page.getByRole("button", { name: "Second.md", exact: true }).click();
-  await page.getByRole("button", { name: "Welcome.md", exact: true }).click();
+  await page.getByRole("treeitem", { name: "Second.md", exact: true }).click();
+  await page.getByRole("treeitem", { name: "Welcome.md", exact: true }).click();
   await page.evaluate(() => window.dispatchEvent(new Event("focus")));
   expect(
     await page.evaluate(() =>
@@ -251,7 +255,7 @@ test("browsing existing files never writes them, and source edits stay exact", a
   await page.getByLabel("Toggle source mode").click();
   const original = "#   Spacing\n\n<!-- keep this -->\n\nSome text\n";
   await page.getByLabel("Markdown source").fill(original);
-  await page.getByRole("button", { name: "Second.md", exact: true }).click();
+  await page.getByRole("treeitem", { name: "Second.md", exact: true }).click();
   expect(
     await page.evaluate(
       () => (window as any).__nativeTest.read().files["Welcome.md"],
@@ -264,7 +268,7 @@ test("duplicate names preserve both files and canceled trash leaves the document
 }) => {
   await openWorkspace(page);
   const row = page.locator(".file-row").filter({
-    has: page.getByRole("button", { name: "Welcome.md", exact: true }),
+    has: page.getByRole("treeitem", { name: "Welcome.md", exact: true }),
   });
   await row.hover();
   await page.getByLabel("Options for Welcome.md").click();
@@ -381,12 +385,12 @@ test("app zoom scales the whole interface and remembers the preference", async (
   await page.getByLabel("Toggle sidebar").click();
   await page.getByLabel("Toggle sidebar").click();
   await expect(
-    page.getByRole("button", { name: "Welcome.md", exact: true }),
-  ).toHaveCSS("font-size", "18px");
+    page.getByRole("treeitem", { name: "Welcome.md", exact: true }),
+  ).toHaveCSS("font-size", "21px");
   await page.getByLabel("Options for Welcome.md").click();
   await expect(page.getByLabel("Rename Welcome.md")).toHaveCSS(
     "font-size",
-    "18px",
+    "21px",
   );
   await page.keyboard.press("Escape");
   await page.reload();

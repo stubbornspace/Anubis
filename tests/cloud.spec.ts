@@ -73,7 +73,7 @@ test("a failed cloud download leaves the current document available", async ({
     (window as any).__nativeTest.failRead = "Second.md";
   });
   await files(page);
-  await page.getByRole("button", { name: "Second.md", exact: true }).click();
+  await page.getByRole("treeitem", { name: "Second.md", exact: true }).click();
   await expect(page.getByRole("alert")).toContainText(
     "Download unavailable offline",
   );
@@ -82,7 +82,7 @@ test("a failed cloud download leaves the current document available", async ({
     (window as any).__nativeTest.failRead = null;
     (window as any).__nativeTest.delayRead = "Second.md";
   });
-  await page.getByRole("button", { name: "Second.md", exact: true }).click();
+  await page.getByRole("treeitem", { name: "Second.md", exact: true }).click();
   await expect(page.getByRole("status")).toHaveText("Downloading Second.md…");
   await expect(page.locator(".writing h1")).toHaveText("Second");
 });

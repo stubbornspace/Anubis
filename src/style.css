@@ -654,6 +654,9 @@ textarea::placeholder {
   color: var(--muted);
   font-size: var(--sidebar-font-size);
 }
+.ios-window .sidebar-controls {
+  justify-content: flex-end;
+}
 .sidebar-controls button {
   gap: 0.375rem;
   min-height: 2rem;
@@ -1055,6 +1058,10 @@ header {
   gap: 0.5rem;
 }
 
+:root[data-platform="ios"] {
+  --touch-target: max(2.75rem, 44px);
+}
+
 /* iOS keeps writing above the keyboard and clear of the camera and home indicator. */
 .ios-window {
   --body-font-size: 1rem;
@@ -1086,7 +1093,8 @@ header {
   font-size: 0.875rem;
   font-weight: 550;
 }
-.ios-window button {
+:root[data-platform="ios"] button,
+:root[data-platform="ios"] .settings-dialog summary {
   min-width: var(--touch-target);
   min-height: var(--touch-target);
 }
@@ -1133,11 +1141,11 @@ header {
 .ios-window > .action-error {
   position: absolute;
 }
-.ios-window .file-dialog,
-.ios-window .settings-dialog {
-  top: max(0.75rem, env(safe-area-inset-top));
+:root[data-platform="ios"] .file-dialog,
+:root[data-platform="ios"] .settings-dialog {
+  top: calc(var(--visual-top, 0px) + max(0.75rem, env(safe-area-inset-top)));
   bottom: calc(
-    100dvh - var(--app-height, 100dvh) +
+    100dvh - var(--app-height, 100dvh) - var(--visual-top, 0px) +
       max(0.75rem, env(safe-area-inset-bottom))
   );
   max-height: calc(
@@ -1340,7 +1348,7 @@ svg.lucide[width="32"] {
   padding: 0.5rem;
 }
 .ios-window .note-search-row button {
-  min-height: 2.75rem;
+  min-height: var(--touch-target);
 }
 .note-search {
   margin: 0.25rem 0.75rem;
@@ -1633,5 +1641,59 @@ svg.lucide[width="32"] {
   }
   .note-tag-input-row input {
     font-size: 1rem;
+  }
+}
+
+/* iPad headers size against the editor column, not the whole window. */
+.ios-window .main {
+  container: ios-editor / inline-size;
+}
+.ios-window.notes-mode header {
+  display: grid;
+  grid-template-columns: minmax(var(--touch-target), 1fr) auto;
+  align-items: center;
+  padding-top: calc(0.5rem + env(safe-area-inset-top));
+  padding-bottom: 0.5rem;
+}
+.ios-window.notes-mode .breadcrumbs {
+  flex-wrap: nowrap;
+}
+.ios-window.notes-mode .breadcrumbs > button {
+  flex-shrink: 0;
+}
+.ios-window.notes-mode .header-actions {
+  position: relative;
+  flex-wrap: nowrap;
+}
+.ios-window.notes-mode .saved {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  width: max-content;
+  max-width: 100%;
+  margin: 0;
+}
+.ios-window.notes-mode .editor-controls {
+  width: auto;
+  flex-wrap: nowrap;
+  overflow: visible;
+}
+@container ios-editor (max-width: 36rem) {
+  .ios-window.notes-mode header {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .ios-window.notes-mode .header-actions {
+    margin-left: 0;
+    width: 100%;
+  }
+  .ios-window.notes-mode .editor-controls {
+    flex-wrap: wrap;
+    width: 100%;
+  }
+}
+/* Avoid a latched hover highlight after a touch on iPad. */
+@media (hover: none) {
+  .ios-window header button:hover {
+    background: none;
   }
 }

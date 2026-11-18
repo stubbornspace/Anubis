@@ -349,6 +349,6 @@ export async function openWorkspace(page: Page) {
   await page
     .getByRole("button", { name: "Choose folder", exact: true })
     .click();
-  await page.getByRole("button", { name: "Welcome.md", exact: true }).click();
+  await page.getByRole("treeitem", { name: "Welcome.md", exact: true }).click();
   await expect(page.locator(".writing h1")).toHaveText("Welcome");
 }

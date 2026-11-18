@@ -74,7 +74,7 @@ test("tag folders and confirmed permanent deletion keep other notes", async ({
   await openLibrary(page);
   await fillNoteSource(page, "# Tagged\n\n#work/project");
   await expect(page.getByRole("status")).toHaveText("Saved locally");
-  await page.getByRole("button", { name: "Tag work", exact: true }).click();
+  await page.getByRole("treeitem", { name: "Tag work", exact: true }).click();
   if (
     await page
       .getByRole("button", { name: "Expand tag work", exact: true })
@@ -102,8 +102,8 @@ test("tag folders and confirmed permanent deletion keep other notes", async ({
   await page.reload();
   await expect(page.locator(".note-row")).toHaveCount(1);
   await expect(
-    page.getByRole("button", { name: "Tag work", exact: true }),
-  ).toHaveAttribute("aria-pressed", "true");
+    page.getByRole("treeitem", { name: "Tag work", exact: true }),
+  ).toHaveAttribute("aria-selected", "true");
 });
 test("search includes text beyond the preview and native close saves notes", async ({
   page,
@@ -673,14 +673,14 @@ test("tags and untagged notes appear directly with nested keyboard navigation", 
         name: "Notes tagged work/project/client",
         exact: true,
       })
-      .getByRole("button", { name: "Nested note", exact: true }),
+      .getByRole("treeitem", { name: "Nested note", exact: true }),
   ).toBeVisible();
   const root = page.locator(".note-tree .sidebar-tree");
   await expect(
     page.getByRole("button", { name: "All Notes", exact: true }),
   ).toHaveCount(0);
   await expect(root.locator(":scope > .note-row")).toHaveText("-Loose note");
-  const project = page.getByRole("button", {
+  const project = page.getByRole("treeitem", {
     name: "Tag work/project",
     exact: true,
   });
@@ -691,16 +691,22 @@ test("tags and untagged notes appear directly with nested keyboard navigation", 
   await page.keyboard.press("ArrowLeft");
   await expect(project).toHaveAttribute("aria-expanded", "false");
   await expect(
-    page.getByRole("button", { name: "Tag work/project/client", exact: true }),
+    page.getByRole("treeitem", {
+      name: "Tag work/project/client",
+      exact: true,
+    }),
   ).toHaveCount(0);
   await page.keyboard.press("ArrowRight");
   await page.keyboard.press("ArrowRight");
   await expect(
-    page.getByRole("button", { name: "Tag work/project/client", exact: true }),
+    page.getByRole("treeitem", {
+      name: "Tag work/project/client",
+      exact: true,
+    }),
   ).toBeFocused();
   await page.keyboard.press("ArrowDown");
   await expect(
-    page.getByRole("button", { name: "Nested note", exact: true }),
+    page.getByRole("treeitem", { name: "Nested note", exact: true }),
   ).toBeFocused();
   await page.keyboard.press("Enter");
   await expect(page.getByLabel("Markdown editor")).toContainText("Nested note");
@@ -730,12 +736,12 @@ test("multi-tag notes appear in each folder while search finds them once across 
   await expect(
     page
       .getByRole("group", { name: "Notes tagged work/project", exact: true })
-      .getByRole("button", { name: "Shared note", exact: true }),
+      .getByRole("treeitem", { name: "Shared note", exact: true }),
   ).toBeVisible();
   await expect(
     page
       .getByRole("group", { name: "Notes tagged personal", exact: true })
-      .getByRole("button", { name: "Shared note", exact: true }),
+      .getByRole("treeitem", { name: "Shared note", exact: true }),
   ).toBeVisible();
   await page
     .getByRole("button", { name: "Collapse tag work", exact: true })
@@ -752,7 +758,7 @@ test("multi-tag notes appear in each folder while search finds them once across 
   await expect(
     page.getByRole("button", { name: "Expand tag personal", exact: true }),
   ).toBeVisible();
-  const personal = page.getByRole("button", {
+  const personal = page.getByRole("treeitem", {
     name: "Tag personal",
     exact: true,
   });
@@ -892,15 +898,44 @@ test("selected tags can be cleared to create untagged notes without an All Notes
   await openLibrary(page);
   await fillNoteSource(page, "# Tagged\n\n#work");
   await expect(page.getByRole("status")).toHaveText("Saved locally");
-  const tag = page.getByRole("button", { name: "Tag work", exact: true });
+  const tag = page.getByRole("treeitem", { name: "Tag work", exact: true });
   await tag.click();
-  await expect(tag).toHaveAttribute("aria-pressed", "true");
+  await expect(tag).toHaveAttribute("aria-selected", "true");
   await tag.press("Enter");
-  await expect(tag).toHaveAttribute("aria-pressed", "false");
+  await expect(tag).toHaveAttribute("aria-selected", "false");
   await page.getByLabel("New note", { exact: true }).click();
   await page.getByLabel("Markdown editor").fill("Untagged");
   await expect(page.getByRole("status")).toHaveText("Saved locally");
   await expect(page.locator(".note-tree .sidebar-tree > .note-row")).toHaveText(
     "-Untagged",
   );
+});
+
+test("tree items expose hierarchy and keep one row in the keyboard tab order", async ({
+  page,
+}) => {
+  await openLibrary(page);
+  await fillNoteSource(page, "# Nested\n\n#work/project");
+  await expect(page.getByRole("status")).toHaveText("Saved locally");
+  const tree = page.getByRole("tree", { name: "Navigation" });
+  const work = tree.getByRole("treeitem", { name: "Tag work", exact: true });
+  const project = tree.getByRole("treeitem", {
+    name: "Tag work/project",
+    exact: true,
+  });
+  await expect(work).toHaveAttribute("aria-level", "1");
+  await expect(project).toHaveAttribute("aria-level", "2");
+  await expect(
+    tree.getByRole("treeitem", { name: "Nested", exact: true }),
+  ).toHaveAttribute("aria-level", "3");
+  await work.focus();
+  await expect(tree.locator('[role="treeitem"][tabindex="0"]')).toHaveCount(1);
+  await work.press("ArrowDown");
+  await expect(project).toBeFocused();
+  await expect(tree.locator('[role="treeitem"][tabindex="0"]')).toHaveCount(1);
+  await project.press("ArrowLeft");
+  await expect(project).toHaveAttribute("aria-expanded", "false");
+  await project.press("Enter");
+  await expect(project).toHaveAttribute("aria-selected", "true");
+  await expect(project).toHaveAttribute("aria-expanded", "true");
 });

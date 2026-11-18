@@ -12,19 +12,19 @@ async function showFiles(page: Page) {
     await page.getByLabel("Toggle sidebar").tap();
 }
 
-async function openMobileWorkspace(page: Page) {
+async function openMobileNotes(page: Page) {
   await page.goto("/");
-  await page.getByRole("button", { name: "Choose folder", exact: true }).tap();
-  await expect(page.getByRole("status")).toHaveText("Saved");
-  await showFiles(page);
-  await page.getByRole("button", { name: "Welcome.md", exact: true }).tap();
-  await expect(page.locator(".writing h1")).toHaveText("Welcome");
+  await page
+    .getByRole("button", { name: "New note", exact: true })
+    .first()
+    .tap();
+  await expect(page.getByLabel("Markdown editor")).toBeVisible();
 }
 
 test("app zoom is saved per device and preserves editor and settings interaction", async ({
   page,
 }) => {
-  await openMobileWorkspace(page);
+  await openMobileNotes(page);
   await showFiles(page);
   await page.getByRole("button", { name: "Settings", exact: true }).tap();
   const zoom = page.getByLabel("App zoom", { exact: true });
@@ -34,11 +34,11 @@ test("app zoom is saved per device and preserves editor and settings interaction
   await expect(page.locator("html")).toHaveCSS("font-size", "24px");
   await expect(zoom).toHaveAttribute("aria-valuetext", "150%");
   await page.getByLabel("Close settings").tap();
-  if (await page.getByLabel("Close files").isVisible())
-    await page.getByLabel("Close files").tap();
+  if (await page.getByLabel("Close notes").isVisible())
+    await page.getByLabel("Close notes").tap();
   await page.getByLabel("Markdown editor").tap();
   await page.getByLabel("Markdown editor").fill("Still editable with app zoom");
-  await expect(page.getByRole("status")).toHaveText("Saved");
+  await expect(page.getByRole("status")).toHaveText("Saved locally");
   await page.reload();
   await expect(page.locator("html")).toHaveCSS("font-size", "24px");
   await expect(page.getByLabel("Markdown editor")).toHaveText(
@@ -61,43 +61,87 @@ test("legacy iOS writing size migrates to app zoom using the iOS default", async
   ).toBe("20");
 });
 
-test("touch navigation saves before switching and leaves room to write", async ({
+test("iOS ignores the saved Documents mode without touching files or recovery", async ({
   page,
 }) => {
-  await openMobileWorkspace(page);
-  await expect(page.locator(".app")).toHaveClass(/ios-window/);
-  await expect(page.locator(".app")).not.toHaveClass(/mac-window/);
-  await expect(page.locator(".mobile-title")).toHaveText("Welcome.md");
-  await page.getByLabel("Markdown editor").fill("A draft from iOS");
+  await page.goto("/");
+  const before = await page.evaluate(() => {
+    localStorage.setItem("kronos.mode", "documents");
+    const data = (window as any).__nativeTest.read();
+    data.chosen = true;
+    data.recovery = { document: { markdown: "Legacy document draft" } };
+    localStorage.setItem("test.native", JSON.stringify(data));
+    return data;
+  });
+  await page.reload();
+  await expect(page.locator(".app")).toHaveClass(/notes-mode/);
   await showFiles(page);
-  await expect(page.getByLabel("Options for Welcome.md")).toHaveCSS(
-    "min-height",
-    "44px",
+  await expect(page.getByRole("group", { name: "Writing mode" })).toHaveCount(
+    0,
   );
-  await page.getByRole("button", { name: "Second.md", exact: true }).tap();
-  await expect(page.locator(".writing h1")).toHaveText("Second");
+  await expect(
+    page.getByRole("button", { name: "Choose folder", exact: true }),
+  ).toHaveCount(0);
+  await page.keyboard.press("Meta+o");
+  await page
+    .getByRole("button", { name: "New note", exact: true })
+    .first()
+    .tap();
+  await page.getByLabel("Markdown editor").fill("iOS note");
+  await expect(page.getByRole("status")).toHaveText("Saved locally");
+  const result = await page.evaluate(() => ({
+    data: (window as any).__nativeTest.read(),
+    calls: (window as any).__nativeTest.calls,
+  }));
+  expect(result.data.files).toEqual(before.files);
+  expect(result.data.recovery).toEqual(before.recovery);
+  expect(result.calls).not.toContain("restore_workspace");
+  expect(result.calls).not.toContain("choose_workspace");
+  expect(result.calls).not.toContain("load_recovery_draft");
+});
+
+test("touch note navigation saves before switching and leaves room to write", async ({
+  page,
+}) => {
+  await openMobileNotes(page);
+  await page.getByLabel("Markdown editor").fill("First mobile note");
+  await showFiles(page);
+  await page
+    .getByRole("button", { name: "New note", exact: true })
+    .first()
+    .tap();
+  await page.getByLabel("Markdown editor").fill("Second mobile note");
+  await showFiles(page);
+  await page
+    .locator(".note-row")
+    .filter({ hasText: "First mobile note" })
+    .tap();
+  await expect(page.getByLabel("Markdown editor")).toHaveText(
+    "First mobile note",
+  );
   if (compact(page)) await expect(page.locator(".sidebar")).not.toBeVisible();
-  expect(
-    await page.evaluate(
-      () => (window as any).__nativeTest.read().files["Welcome.md"],
-    ),
-  ).toContain("A draft from iOS");
+  const notes = await page.evaluate(
+    () => (window as any).__nativeTest.read().library.notes,
+  );
+  expect(notes.map((note: any) => note.markdown)).toContain(
+    "Second mobile note",
+  );
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= innerWidth,
     ),
   ).toBe(true);
-  const bounds = await page.locator(".page-scroll").boundingBox();
-  expect(bounds!.height).toBeGreaterThan(200);
-  expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(
+  const bounds = (await page.locator(".page-scroll").boundingBox())!;
+  expect(bounds.height).toBeGreaterThan(200);
+  expect(bounds.y + bounds.height).toBeLessThanOrEqual(
     page.viewportSize()!.height + 1,
   );
 });
 
-test("native backgrounding flushes edits and keeps failed drafts available for recovery", async ({
+test("native backgrounding flushes notes and failed drafts recover after relaunch", async ({
   page,
 }) => {
-  await openMobileWorkspace(page);
+  await openMobileNotes(page);
   await page.getByLabel("Markdown editor").fill("Save before suspension");
   await page.evaluate(() =>
     window.dispatchEvent(new Event("anubis-background")),
@@ -111,35 +155,38 @@ test("native backgrounding flushes edits and keeps failed drafts available for r
     .toBe(true);
   expect(
     await page.evaluate(
-      () => (window as any).__nativeTest.read().files["Welcome.md"],
+      () => (window as any).__nativeTest.read().library.notes[0].markdown,
     ),
   ).toContain("Save before suspension");
   await page.evaluate(() => {
     (window as any).__nativeTest.failSave = true;
   });
-  await page.getByLabel("Markdown editor").fill("Keep this unsaved draft");
+  await page.getByLabel("Markdown editor").fill("Keep this unsaved note");
   await page.evaluate(() =>
     window.dispatchEvent(new Event("anubis-background")),
   );
-  await expect(page.getByRole("alert")).toContainText("read-only");
+  await expect(page.getByRole("alert")).toContainText("Note save failed");
+  await page.reload();
   await expect(page.getByLabel("Markdown editor")).toHaveText(
-    "Keep this unsaved draft",
+    "Keep this unsaved note",
   );
-  await page.getByRole("button", { name: "Save a copy", exact: true }).tap();
-  await page.getByLabel("File name").fill("Recovered.md");
-  await page.getByRole("button", { name: "Create", exact: true }).tap();
-  await expect(page.getByRole("status")).toHaveText("Saved");
-  expect(
-    await page.evaluate(
-      () => (window as any).__nativeTest.read().files["Recovered.md"],
-    ),
-  ).toContain("Keep this unsaved draft");
+  await page
+    .getByRole("button", { name: "Save recovery copy", exact: true })
+    .tap();
+  await expect(page.getByRole("status")).toHaveText("Saved locally");
+  const notes = await page.evaluate(
+    () => (window as any).__nativeTest.read().library.notes,
+  );
+  expect(notes).toHaveLength(2);
+  expect(notes.map((note: any) => note.markdown)).toContain(
+    "Save before suspension",
+  );
 });
 
 test("keyboard viewport changes preserve access to the editor and toolbar", async ({
   page,
 }) => {
-  await openMobileWorkspace(page);
+  await openMobileNotes(page);
   await page.getByLabel("Toggle source mode").tap();
   await page
     .getByLabel("Markdown source")
@@ -162,129 +209,10 @@ test("keyboard viewport changes preserve access to the editor and toolbar", asyn
   );
 });
 
-test("failed iOS saves survive relaunch and further edits can be recovered as a copy", async ({
-  page,
-}) => {
-  await openMobileWorkspace(page);
-  const original = await page.evaluate(
-    () => (window as any).__nativeTest.read().files["Welcome.md"],
-  );
-  await page.evaluate(() => {
-    (window as any).__nativeTest.failSave = true;
-  });
-  await page.getByLabel("Markdown editor").fill("Recover this after relaunch");
-  await page.evaluate(() =>
-    window.dispatchEvent(new Event("anubis-background")),
-  );
-  await expect(page.getByRole("alert")).toContainText("read-only");
-  await page.reload();
-  await expect(page.getByRole("alert")).toContainText(
-    "Recovered unsaved edits",
-  );
-  await expect(page.getByLabel("Markdown editor")).toHaveText(
-    "Recover this after relaunch",
-  );
-  await page.getByLabel("Markdown editor").fill("Newer recovered edits");
-  await page.evaluate(() =>
-    window.dispatchEvent(new Event("anubis-background")),
-  );
-  await expect
-    .poll(() =>
-      page.evaluate(
-        () => (window as any).__nativeTest.read().recovery.document.markdown,
-      ),
-    )
-    .toContain("Newer recovered edits");
-  await page.reload();
-  await expect(page.getByLabel("Markdown editor")).toHaveText(
-    "Newer recovered edits",
-  );
-  await page.getByRole("button", { name: "Save a copy", exact: true }).tap();
-  await page.getByLabel("File name").fill("Recovered.md");
-  await page.getByRole("button", { name: "Create", exact: true }).tap();
-  await expect(page.getByRole("status")).toHaveText("Saved");
-  const data = await page.evaluate(() => (window as any).__nativeTest.read());
-  expect(data.files["Welcome.md"]).toBe(original);
-  expect(data.files["Recovered.md"]).toContain("Newer recovered edits");
-  expect(data.recovery).toBeUndefined();
-});
-
-test("discarding a recovered iOS draft requires confirmation before clearing recovery", async ({
-  page,
-}) => {
-  await openMobileWorkspace(page);
-  await page.evaluate(() => {
-    (window as any).__nativeTest.failSave = true;
-  });
-  await page.getByLabel("Markdown editor").fill("A recoverable draft");
-  await page.evaluate(() =>
-    window.dispatchEvent(new Event("anubis-background")),
-  );
-  await expect(page.getByRole("alert")).toContainText("read-only");
-  await page.reload();
-  await expect(page.getByRole("alert")).toContainText(
-    "Recovered unsaved edits",
-  );
-  await page.evaluate(() => {
-    (window as any).__nativeTest.confirm = false;
-  });
-  await page.getByRole("button", { name: "Reload from disk" }).tap();
-  await expect(page.getByLabel("Markdown editor")).toHaveText(
-    "A recoverable draft",
-  );
-  expect(
-    await page.evaluate(() => !!(window as any).__nativeTest.read().recovery),
-  ).toBe(true);
-  await page.evaluate(() => {
-    (window as any).__nativeTest.confirm = true;
-  });
-  await page.getByRole("button", { name: "Reload from disk" }).tap();
-  await expect(page.locator(".writing h1")).toHaveText("Welcome");
-  expect(
-    await page.evaluate(() => (window as any).__nativeTest.read().recovery),
-  ).toBeUndefined();
-});
-
-test("choosing a folder after failed restoration retains the pending iOS recovery draft", async ({
-  page,
-}) => {
-  await openMobileWorkspace(page);
-  await page.evaluate(() => {
-    (window as any).__nativeTest.failSave = true;
-  });
-  await page
-    .getByLabel("Markdown editor")
-    .fill("Keep this through folder recovery");
-  await page.evaluate(() =>
-    window.dispatchEvent(new Event("anubis-background")),
-  );
-  await expect(page.getByRole("alert")).toContainText("read-only");
-  await page.evaluate(() => {
-    const data = (window as any).__nativeTest.read();
-    data.restoreFailure = true;
-    localStorage.setItem("test.native", JSON.stringify(data));
-  });
-  await page.reload();
-  await expect(page.getByRole("alert")).toContainText("folder is unavailable");
-  await page.getByRole("button", { name: "Choose folder", exact: true }).tap();
-  await expect(page.getByRole("alert")).toContainText(
-    "Recovered unsaved edits",
-  );
-  await expect(page.getByLabel("Markdown editor")).toHaveText(
-    "Keep this through folder recovery",
-  );
-});
-
 test("note library navigation and background saves work on touch devices", async ({
   page,
 }) => {
-  await openMobileWorkspace(page);
-  await showFiles(page);
-  await page.getByRole("button", { name: "Notes", exact: true }).tap();
-  await page
-    .getByRole("button", { name: "New note", exact: true })
-    .first()
-    .tap();
+  await openMobileNotes(page);
   await page.getByLabel("Markdown editor").fill("Mobile library note");
   await page.getByRole("button", { name: "Tags", exact: true }).tap();
   const picker = page.getByRole("dialog", { name: "Tags", exact: true });
@@ -306,7 +234,7 @@ test("note library navigation and background saves work on touch devices", async
   await expect(
     page.getByRole("button", { name: "All Notes", exact: true }),
   ).toHaveCount(0);
-  const personal = page.getByRole("button", {
+  const personal = page.getByRole("treeitem", {
     name: "Tag personal",
     exact: true,
   });
@@ -336,7 +264,7 @@ test("note library navigation and background saves work on touch devices", async
     ).toHaveCount(0);
 
     if (wasCollapsed)
-      await page.getByLabel("Close files", { exact: true }).tap();
+      await page.getByLabel("Close notes", { exact: true }).tap();
     const buttons = page
       .getByRole("group", { name: "Editor controls" })
       .getByRole("button");
@@ -389,17 +317,10 @@ test("note library navigation and background saves work on touch devices", async
     page.getByRole("button", { name: "Tags", exact: true }),
   ).toBeFocused();
   await expect(page.getByRole("status")).toHaveText("Saved locally");
-
-  await showFiles(page);
-  await page.getByRole("button", { name: "Documents", exact: true }).tap();
-  if (compact(page))
-    await page.getByLabel("Close files", { exact: true }).tap();
-  await expect(page.getByLabel("Markdown editor")).toContainText("Welcome");
-  await checkToolbar();
 });
 
 test("selection formatting is available on touch layouts", async ({ page }) => {
-  await openMobileWorkspace(page);
+  await openMobileNotes(page);
   const editor = page.getByLabel("Markdown editor");
   await editor.fill("Touch formatting");
   await editor.press("ControlOrMeta+a");
@@ -413,7 +334,7 @@ test("selection formatting is available on touch layouts", async ({ page }) => {
 });
 
 test("image crop and size controls work on touch layouts", async ({ page }) => {
-  await openMobileWorkspace(page);
+  await openMobileNotes(page);
   await page.locator('input[type="file"][accept^="image/"]').setInputFiles({
     name: "pixel.png",
     mimeType: "image/png",
@@ -432,4 +353,135 @@ test("image crop and size controls work on touch layouts", async ({ page }) => {
   await dialog.getByRole("button", { name: "Apply", exact: true }).tap();
   await expect(dialog).not.toBeVisible();
   await expect(page.locator(".note-image")).toHaveCSS("width", "160px");
+});
+
+test("minimum zoom preserves New Note and portal dialog touch targets", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.evaluate(() => localStorage.setItem("kronos.appZoom", "75"));
+  await page.reload();
+  await showFiles(page);
+  const add = page
+    .getByRole("button", { name: "New note", exact: true })
+    .first();
+  const addBounds = (await add.boundingBox())!;
+  expect(addBounds.width).toBeGreaterThanOrEqual(44);
+  expect(addBounds.height).toBeGreaterThanOrEqual(44);
+  await add.tap();
+  await page.getByLabel("Markdown editor").fill("A saved revision");
+  await expect(page.getByRole("status")).toHaveText("Saved locally");
+  await page.getByRole("button", { name: "History", exact: true }).tap();
+  const history = page.getByRole("dialog", { name: "Note history" });
+  await history.locator("summary").first().tap();
+  for (const control of await history.locator("button, summary").all()) {
+    const bounds = (await control.boundingBox())!;
+    expect(bounds.width).toBeGreaterThanOrEqual(44);
+    expect(bounds.height).toBeGreaterThanOrEqual(44);
+  }
+  // Portals must receive the same keyboard and safe-area bounds as Settings.
+  await page.evaluate(() => {
+    Object.defineProperty(window.visualViewport!, "height", {
+      configurable: true,
+      value: 300,
+    });
+    Object.defineProperty(window.visualViewport!, "offsetTop", {
+      configurable: true,
+      value: 40,
+    });
+    window.visualViewport!.dispatchEvent(new Event("resize"));
+  });
+  await expect
+    .poll(async () => {
+      const bounds = (await history.boundingBox())!;
+      return bounds.y >= 40 && bounds.y + bounds.height <= 340;
+    })
+    .toBe(true);
+  await history.getByRole("button", { name: "Close", exact: true }).tap();
+  await expect(
+    page.getByRole("button", { name: "History", exact: true }),
+  ).toBeFocused();
+});
+
+test("Tags stays inside the visible viewport when the keyboard opens and pans", async ({
+  page,
+}) => {
+  await openMobileNotes(page);
+  await page.getByLabel("Toggle source mode").tap();
+  await page
+    .getByLabel("Markdown source")
+    .fill(
+      "# Tagged note\n\n" +
+        Array.from({ length: 15 }, (_, i) => `#tag${i}`).join(" "),
+    );
+  await page.getByLabel("Toggle source mode").tap();
+  await page.getByRole("button", { name: "Tags", exact: true }).tap();
+  const tags = page.getByRole("dialog", { name: "Tags", exact: true });
+  await expect(tags.getByLabel("Add tag", { exact: true })).toBeFocused();
+  for (const top of [0, 60]) {
+    await page.evaluate((offsetTop) => {
+      for (const [key, value] of Object.entries({ height: 300, offsetTop })) {
+        Object.defineProperty(window.visualViewport!, key, {
+          configurable: true,
+          value,
+        });
+      }
+      window.visualViewport!.dispatchEvent(
+        new Event(offsetTop ? "scroll" : "resize"),
+      );
+    }, top);
+    await expect
+      .poll(async () => {
+        const bounds = (await tags.boundingBox())!;
+        return bounds.y >= top && bounds.y + bounds.height <= top + 300;
+      })
+      .toBe(true);
+  }
+  await tags.getByLabel("Add tag", { exact: true }).fill("keyboard");
+  await tags.getByRole("button", { name: "Add", exact: true }).tap();
+  await expect(
+    tags.getByRole("button", { name: "Remove tag keyboard", exact: true }),
+  ).toHaveCount(1);
+  await page.keyboard.press("Escape");
+  await expect(tags).not.toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Tags", exact: true }),
+  ).toBeFocused();
+});
+
+test("iPad header keeps navigation and actions on one row beside the sidebar", async ({
+  page,
+}) => {
+  for (const width of [1000, 1194]) {
+    await page.setViewportSize({ width, height: 834 });
+    await openMobileNotes(page);
+    await page
+      .getByLabel("Markdown editor")
+      .fill("Yuzu Tuna Tartare — a longer note title");
+    await expect(page.getByRole("status")).toHaveText("Saved locally");
+    await expect(
+      page.getByRole("button", { name: "Hide keyboard" }),
+    ).toHaveCount(0);
+    for (const expanded of [true, false]) {
+      const toggle = page.getByLabel("Toggle sidebar");
+      if (
+        ((await toggle.getAttribute("aria-expanded")) === "true") !==
+        expanded
+      )
+        await toggle.tap();
+      const navigation = (await toggle.boundingBox())!;
+      const actions = await page
+        .getByRole("group", { name: "Editor controls" })
+        .getByRole("button")
+        .all();
+      for (const action of actions) {
+        const box = (await action.boundingBox())!;
+        expect(Math.abs(box.y - navigation.y)).toBeLessThan(1);
+        expect(box.x).toBeGreaterThanOrEqual(navigation.x + navigation.width);
+        expect(box.x + box.width).toBeLessThanOrEqual(width);
+      }
+      const header = (await page.locator("header").boundingBox())!;
+      expect(header.height).toBeLessThanOrEqual(64);
+    }
+  }
 });
